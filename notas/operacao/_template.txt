@@ -1,0 +1,19 @@
+DATA: AAAA-MM-DD HH:MM
+MODULO: [solver | godot | main | paper | global]
+TIPO: [bug | performance | comportamento inesperado | observacao]
+
+OBSERVACAO:
+  O que aconteceu?
+
+CONTEXTO:
+  Reproduzível? Como?
+  Condições do ambiente (modo VR/desktop, GPU, carga, etc.)?
+
+IMPACTO:
+  [critico | alto | medio | baixo]
+
+ACAO TOMADA:
+  O que foi feito / investigado?
+
+STATUS:
+  [aberto | resolvido | monitorando | descartado]

@@ -1,0 +1,27 @@
+DATA: 2026-05-05
+MODULO: solver
+TITULO: Nome correto do pacote de propagação orbital Julia
+
+CONTEXTO:
+  O CLAUDE.md do solver listava "SatelliteToolboxPropagation.jl" como dependência.
+  Ao tentar Pkg.add, o registro Julia retornou erro: pacote não encontrado.
+
+DECISAO:
+  O nome correto no registro General é SatelliteToolboxPropagators.jl (versão 1.1.0).
+  Todos os using/import foram corrigidos para usar o nome correto.
+  CLAUDE.md do solver atualizado.
+
+ALTERNATIVAS CONSIDERADAS:
+  - SatelliteToolbox.jl (meta-pacote): disponível, mas traz dependências
+    desnecessárias para Fase 1. Preferir pacotes individuais.
+  - SatelliteToolboxSgp4.jl: disponível separadamente mas já incluído
+    como dependência transitiva de SatelliteToolboxPropagators.
+
+CONSEQUENCIAS:
+  - Arquivos corrigidos: src/VSLSolver.jl, src/orbital/propagation.jl,
+    src/export/c_api.jl, test/runtests.jl, test/orbital/test_propagation.jl
+  - Qualquer documentação futura deve usar "SatelliteToolboxPropagators"
+
+REFERENCIAS:
+  - Arquivo(s) afetado(s): solver/src/, solver/test/, solver/CLAUDE.md
+  - CLAUDE.md atualizado? sim

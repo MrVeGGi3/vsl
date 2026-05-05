@@ -1,0 +1,32 @@
+DATA: 2026-05-05
+MODULO: godot
+TITULO: Fallback desktop/VR sem duplicação de cena
+
+CONTEXTO:
+  O projeto precisa rodar tanto no monitor (desenvolvimento diário, Fases 1–3)
+  quanto no Quest 3S via Quest Link (Fase 4). A abordagem inicial só imprimia
+  "Modo desktop" quando OpenXR falhava, sem configurar câmera nem estrutura.
+
+DECISAO:
+  Uma única cena (main.tscn) com Camera3D e XROrigin3D sempre presentes.
+  - Camera3D: current=true por padrão no editor (ativa em desktop automaticamente)
+  - XROrigin3D: inerte sem OpenXR — sem custo manter na cena
+  - main_scene.gd decide em _ready() qual câmera fica ativa
+  - Resto da cena (orbit_viewer, earth, ui) não sabe o modo — é idêntico nos dois casos
+
+ALTERNATIVAS CONSIDERADAS:
+  - Cenas separadas (main_desktop.tscn / main_vr.tscn): descartada — divergência
+    inevitável, toda mudança precisaria ser feita em dois lugares
+  - Flag de exportação no project.godot: descartada — impede troca em runtime
+    sem recompilar
+
+CONSEQUENCIAS:
+  - Positivo: orbit_viewer.gd, earth_renderer.gd etc. nunca precisam verificar modo
+  - Positivo: testar desktop = testar 95% do código VR
+  - Atenção: vr_controller.gd deve verificar _vr_active antes de processar input,
+    senão quebra modo desktop com erro de XRController3D
+  - UI: painéis 2D precisam migrar para SubViewport 3D em modo VR (Fase 4, placeholder)
+
+REFERENCIAS:
+  - Arquivo(s) afetado(s): godot/project/scenes/main.tscn, godot/scripts/main_scene.gd
+  - CLAUDE.md atualizado? sim — seção "Fallback Desktop / VR" em godot/CLAUDE.md

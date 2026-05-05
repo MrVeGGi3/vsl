@@ -1,0 +1,55 @@
+# Julia
+*.jl.cov
+*.jl.mem
+*.jl.*.cov
+/solver/.julia/
+
+# C++ build artifacts
+build/
+cmake-build-*/
+CMakeFiles/
+*.o
+*.a
+*.so
+*.so.*
+*.out
+CMakeCache.txt
+compile_commands.json
+
+# Godot
+.godot/
+*.import
+*.translation
+*.mono/
+
+# LaTeX intermediates (keep figures)
+*.aux
+*.fdb_latexmk
+*.fls
+*.log
+*.out
+*.synctex.gz
+*.toc
+*.bbl
+*.bcf
+*.blg
+*.run.xml
+*.nav
+*.snm
+*.vrb
+paper/*.pdf
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Secrets
+.env
+*.key

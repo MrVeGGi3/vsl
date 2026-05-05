@@ -1,0 +1,22 @@
+DATA: AAAA-MM-DD
+MODULO: [solver | godot | main | paper | global]
+TITULO:
+
+CONTEXTO:
+  O que levou a esta decisão?
+
+DECISAO:
+  O que foi decidido?
+
+ALTERNATIVAS CONSIDERADAS:
+  - Opção A: ...
+  - Opção B: ...
+
+CONSEQUENCIAS:
+  - O que muda?
+  - O que fica mais difícil?
+  - O que fica mais fácil?
+
+REFERENCIAS:
+  - Arquivo(s) afetado(s):
+  - CLAUDE.md atualizado? [sim | não | não necessário]
