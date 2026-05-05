@@ -1,0 +1,23 @@
+[gd_scene load_steps=3 format=3 uid="uid://earth"]
+
+[ext_resource type="Script" path="res://scripts/earth_renderer.gd" id="1"]
+[ext_resource type="Shader" path="res://shaders/earth_atmosphere.gdshader" id="2"]
+
+[sub_resource type="SphereMesh" id="SphereMesh_earth"]
+radius = 6.371
+height = 12.742
+radial_segments = 64
+rings = 32
+
+[sub_resource type="ShaderMaterial" id="ShaderMat_earth"]
+shader = ExtResource("2")
+
+[node name="Earth" type="Node3D"]
+script = ExtResource("1")
+
+[node name="EarthMesh" type="MeshInstance3D" parent="."]
+mesh = SubResource("SphereMesh_earth")
+material_override = SubResource("ShaderMat_earth")
+
+[node name="AtmosphereGlow" type="MeshInstance3D" parent="."]
+; Slightly larger sphere for atmosphere scattering effect — Phase 2 placeholder
