@@ -37,7 +37,7 @@ VSL employs a process-level architecture in which a C++17 main process initializ
 
 The numerical solver (`VSLSolver.jl`, Julia 1.12) provides:
 
-- **Orbital propagation** via `SatelliteToolboxPropagators.jl` (SGP4/J2) [@satellitetoolbox]
+- **Orbital propagation** via `SatelliteToolboxPropagators.jl` (SGP4/J2) [@sgp4; @satellitetoolbox]
 - **Eclipse detection** using cylindrical shadow geometry (SMAD Ch. 11)
 - **Ground station access windows** with GMST-corrected ECI→ECEF transformation
 - **Hohmann transfer ΔV** using universal variables and Stumpff functions [@curtis]
