@@ -2,6 +2,7 @@
 
 [![CI](https://github.com/MrVeGGi3/vsl/actions/workflows/ci.yml/badge.svg)](https://github.com/MrVeGGi3/vsl/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.20059111.svg)](https://doi.org/10.5281/zenodo.20059111)
 
 An open-source mission analysis environment for early-stage spacecraft design. VSL combines a Julia numerical solver with real-time 3D visualization (LibGodot) and optional immersive VR (OpenXR / Meta Quest via Quest Link), targeting sounding rockets, CubeSats, and smallsats.
 
@@ -179,6 +180,20 @@ vsl/
 
 If you use VSL in your research, please cite:
 
+**Software archive (Zenodo):**
+
+```bibtex
+@software{vsl2026_zenodo,
+  author  = {Soares, Matheus Veras},
+  title   = {{VSL}: Virtual Simulation Lab},
+  year    = {2026},
+  doi     = {10.5281/zenodo.20059111},
+  url     = {https://doi.org/10.5281/zenodo.20059111}
+}
+```
+
+**JOSS paper** *(DOI assigned upon acceptance):*
+
 ```bibtex
 @article{vsl2026,
   author  = {Soares, Matheus Veras},
@@ -188,8 +203,6 @@ If you use VSL in your research, please cite:
   doi     = {10.21105/joss.XXXXX}
 }
 ```
-
-*(DOI will be assigned upon JOSS acceptance.)*
 
 ---
 
