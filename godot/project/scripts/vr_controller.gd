@@ -4,7 +4,7 @@ extends XRController3D
 @export var is_right_hand: bool = true
 
 const RAY_LENGTH       := 10.0
-const GRAB_SENSITIVITY := 100.0   # degrees per meter of controller movement
+const ROTATE_SPEED     := 120.0   # degrees per second at full thumbstick deflection
 const ZOOM_SPEED       := 0.3     # scale factor per second at max thumbstick
 const HAPTIC_DUR       := 0.05
 const HAPTIC_AMP       := 0.3
@@ -12,7 +12,7 @@ const HAPTIC_AMP       := 0.3
 var _vr_active    := false
 var _grip_held    := false
 var _zoom_axis    := 0.0
-var _prev_pos     := Vector3.ZERO
+var _rotate_axis  := Vector2.ZERO
 
 var _ray_cast     : RayCast3D      = null
 var _ray_mesh     : ImmediateMesh  = null
@@ -20,15 +20,15 @@ var _ray_instance : MeshInstance3D = null
 var _scene_root   : Node3D         = null
 
 func _ready() -> void:
-	var main := get_node_or_null("/root/Main") as Node3D
-	if main == null or not main._vr_active:
-		return
+	pass
+
+func init_vr(scene_root: Node3D) -> void:
 	_vr_active  = true
-	_scene_root = main
-	_prev_pos   = global_transform.origin
+	_scene_root = scene_root
 
 	button_pressed.connect(_on_button_pressed)
 	button_released.connect(_on_button_released)
+	input_float_changed.connect(_on_float_changed)
 	input_vector2_changed.connect(_on_thumbstick)
 
 	if is_right_hand:
@@ -62,13 +62,11 @@ func _process(delta: float) -> void:
 	if is_right_hand and _ray_cast != null:
 		_update_ray_visual()
 
-	if _grip_held and not is_right_hand:
-		_apply_grab_rotation()
+	if not is_right_hand and _rotate_axis.length_squared() > 0.15 * 0.15:
+		_apply_thumbstick_rotation(delta)
 
 	if absf(_zoom_axis) > 0.15:
 		_apply_zoom(delta)
-
-	_prev_pos = global_transform.origin
 
 func _update_ray_visual() -> void:
 	_ray_mesh.clear_surfaces()
@@ -80,12 +78,9 @@ func _update_ray_visual() -> void:
 		_ray_mesh.surface_add_vertex(Vector3(0.0, 0.0, -RAY_LENGTH))
 	_ray_mesh.surface_end()
 
-func _apply_grab_rotation() -> void:
-	var delta := global_transform.origin - _prev_pos
-	if delta.length_squared() < 1e-8:
-		return
-	var rot_y := deg_to_rad(-delta.x * GRAB_SENSITIVITY)
-	var rot_x := deg_to_rad(-delta.y * GRAB_SENSITIVITY)
+func _apply_thumbstick_rotation(delta: float) -> void:
+	var rot_y := deg_to_rad(-_rotate_axis.x * ROTATE_SPEED * delta)
+	var rot_x := deg_to_rad(-_rotate_axis.y * ROTATE_SPEED * delta)
 	var earth := _scene_root.get_node_or_null("Earth") as Node3D
 	var orbit := _scene_root.get_node_or_null("OrbitViewer") as Node3D
 	if earth:
@@ -107,22 +102,28 @@ func _apply_zoom(delta: float) -> void:
 
 func _on_button_pressed(name: String) -> void:
 	match name:
-		"grip_click":
-			_grip_held = true
-			trigger_haptic_pulse("haptic", 0.0, HAPTIC_DUR, HAPTIC_AMP, 0.0)
 		"trigger_click":
 			if is_right_hand:
 				_try_interact()
 		"by_button":
 			_toggle_vr_panel()
 
-func _on_button_released(name: String) -> void:
-	if name == "grip_click":
-		_grip_held = false
+func _on_button_released(_name: String) -> void:
+	pass
+
+func _on_float_changed(name: String, value: float) -> void:
+	if name == "grip":
+		var was_held := _grip_held
+		_grip_held = value > 0.5
+		if _grip_held and not was_held:
+			trigger_haptic_pulse("haptic", 0.0, HAPTIC_DUR, HAPTIC_AMP, 0.0)
 
 func _on_thumbstick(name: String, value: Vector2) -> void:
-	if name == "primary" and is_right_hand:
-		_zoom_axis = value.y
+	if name == "primary":
+		if is_right_hand:
+			_zoom_axis = value.y
+		else:
+			_rotate_axis = value
 
 func _try_interact() -> void:
 	if _ray_cast == null or not _ray_cast.is_colliding():

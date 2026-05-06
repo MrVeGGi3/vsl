@@ -17,7 +17,12 @@ func _ready() -> void:
 		_hide_vr_panel()
 	else:
 		_attach_ui_to_world()
+		_init_vr_controllers()
 	_setup_ground_station()
+
+func _init_vr_controllers() -> void:
+	for ctrl in [$XROrigin3D/XRController3DLeft, $XROrigin3D/XRController3DRight]:
+		ctrl.init_vr(self)
 
 func _setup_ground_station() -> void:
 	var earth := $Earth
