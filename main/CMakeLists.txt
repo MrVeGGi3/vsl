@@ -89,5 +89,31 @@ target_link_libraries(vsl_main PRIVATE
     dl          # dlsym for GodotInstance C++ symbol resolution
 )
 
+# ── Integration test ─────────────────────────────────────────────────────────
+# Standalone binary — links libjulia only (no libgodot needed for solver tests).
+# Run from build/ so solver_abs_path() in julia_solver.cpp resolves correctly.
+add_executable(vsl_integration_test
+    tests/integration_test.cpp
+    src/julia_solver.cpp
+)
+
+target_include_directories(vsl_integration_test PRIVATE src/)
+
+target_link_libraries(vsl_integration_test PRIVATE libjulia dl)
+
+# Julia dlopen(RTLD_DEEPBIND) is incompatible with AddressSanitizer
+# (https://github.com/google/sanitizers/issues/611). Override global ASan flags
+# for this target. TSan is unaffected and remains enabled when VSL_TSAN=ON.
+if(CMAKE_BUILD_TYPE STREQUAL "Debug" AND NOT VSL_TSAN)
+    target_compile_options(vsl_integration_test PRIVATE -fno-sanitize=all)
+    target_link_options(vsl_integration_test PRIVATE -fno-sanitize=all)
+endif()
+
+enable_testing()
+add_test(NAME phase3_integration
+    COMMAND vsl_integration_test
+    WORKING_DIRECTORY "${CMAKE_BINARY_DIR}"
+)
+
 # ── Install ───────────────────────────────────────────────────────────────────
 install(TARGETS vsl_main DESTINATION bin)

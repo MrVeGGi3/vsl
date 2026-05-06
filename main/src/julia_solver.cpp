@@ -76,6 +76,13 @@ int vsl_solver_init(const char* sysimage_path) {
         return -1;
     }
 
+    // Julia 1.12 requires globals to be declared before jl_set_global can write them
+    // (binding check re-introduced after being accidentally removed in 1.9–1.10, issue #56933).
+    jl_eval_string("global _vsl_l1 = \"\"; global _vsl_l2 = \"\"");
+    if (check_julia_error("declare TLE globals")) return -1;
+    jl_eval_string("global _vsl_t = Float64[]; global _vsl_pos = VSLSolver.Vec3[]; global _vsl_jd = 0.0");
+    if (check_julia_error("declare propagation globals")) return -1;
+
     g_initialized = true;
     std::fprintf(stderr, "[vsl] VSLSolver loaded OK\n");
     return 0;
@@ -136,18 +143,24 @@ int vsl_propagate_orbit(
 }
 
 // Helper: load a TLE and compute its Julian epoch date into a Julia variable pair.
-// Sets Main._vsl_tle, Main._vsl_t, Main._vsl_pos, Main._vsl_jd.
+// Sets Main._vsl_t, Main._vsl_pos, Main._vsl_jd via Julia-level global assignment.
 static int _jl_propagate_tle(const char* l1, const char* l2, double dur_s) {
-    // Store TLE strings in Julia globals so embedded newlines/quotes don't break
-    jl_set_global(jl_main_module, jl_symbol("_vsl_l1"), jl_cstr_to_string(l1));
-    jl_set_global(jl_main_module, jl_symbol("_vsl_l2"), jl_cstr_to_string(l2));
+    // jl_set_global requires the binding to pre-exist in Julia 1.12 (issue #56933).
+    // Use jl_eval_string for top-level assignment — TLE format has no quotes/backslashes.
+    char set_l1[128], set_l2[128];
+    std::snprintf(set_l1, sizeof(set_l1), "_vsl_l1 = \"%s\"", l1);
+    std::snprintf(set_l2, sizeof(set_l2), "_vsl_l2 = \"%s\"", l2);
+    jl_eval_string(set_l1);
+    if (check_julia_error("set _vsl_l1")) return -1;
+    jl_eval_string(set_l2);
+    if (check_julia_error("set _vsl_l2")) return -1;
 
-    char cmd[256];
+    char cmd[512];
     std::snprintf(cmd, sizeof(cmd),
         "let tle = SatelliteToolboxTle.read_tle(_vsl_l1, _vsl_l2),"
         "    jd  = VSLSolver._tle_jd(_vsl_l1),"
         "    (t, pos, _) = VSLSolver.propagate_orbit(tle, %.1f; step_s=30.0);"
-        "    global _vsl_t=t; global _vsl_pos=pos; global _vsl_jd=jd; nothing"
+        "    global _vsl_t=t; global _vsl_pos=pos; global _vsl_jd=jd; nothing\n"
         "end", dur_s);
 
     jl_eval_string(cmd);
@@ -251,8 +264,13 @@ int vsl_generate_report_json(
 ) {
     if (!g_initialized) return -1;
 
-    jl_set_global(jl_main_module, jl_symbol("_vsl_l1"), jl_cstr_to_string(tle_line1));
-    jl_set_global(jl_main_module, jl_symbol("_vsl_l2"), jl_cstr_to_string(tle_line2));
+    char set_l1[128], set_l2[128];
+    std::snprintf(set_l1, sizeof(set_l1), "_vsl_l1 = \"%s\"", tle_line1);
+    std::snprintf(set_l2, sizeof(set_l2), "_vsl_l2 = \"%s\"", tle_line2);
+    jl_eval_string(set_l1);
+    if (check_julia_error("set _vsl_l1 (report)")) return -1;
+    jl_eval_string(set_l2);
+    if (check_julia_error("set _vsl_l2 (report)")) return -1;
 
     char cmd[512];
     std::snprintf(cmd, sizeof(cmd),
