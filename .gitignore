@@ -6,6 +6,7 @@
 
 # C++ build artifacts
 build/
+build_*/
 cmake-build-*/
 CMakeFiles/
 *.o
@@ -15,12 +16,19 @@ CMakeFiles/
 *.out
 CMakeCache.txt
 compile_commands.json
+.cache/
 
 # Godot
 .godot/
 *.import
 *.translation
 *.mono/
+*.uid
+
+# Large binary assets (download via textures/earth/download.sh)
+godot/project/textures/earth/*.jpg
+godot/project/textures/earth/*.png
+godot/project/textures/earth/*.exr
 
 # LaTeX intermediates (keep figures)
 *.aux

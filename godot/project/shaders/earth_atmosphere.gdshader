@@ -4,7 +4,7 @@ render_mode blend_mix, depth_draw_opaque, cull_back, diffuse_burley, specular_sc
 uniform sampler2D albedo_texture : source_color, hint_default_white;
 uniform sampler2D night_texture  : source_color, hint_default_black;
 uniform sampler2D cloud_texture  : source_color, hint_default_white;
-uniform vec3  sun_direction      : source_color = vec3(1.0, 0.0, 0.0);
+uniform vec3  sun_direction      = vec3(1.0, 0.0, 0.0);
 uniform float atmosphere_density : hint_range(0.0, 1.0) = 0.6;
 uniform float cloud_opacity      : hint_range(0.0, 1.0) = 0.5;
 

@@ -1,9 +1,6 @@
 #pragma once
 #include <string>
 
-// Forward declaration — full type comes from libgodot headers.
-struct GDExtensionInterfaceGetProcAddress;
-
 // Result of a LibGodot initialization attempt.
 struct GodotInitResult {
     bool success{false};

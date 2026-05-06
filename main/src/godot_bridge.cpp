@@ -6,9 +6,25 @@
 #include <string>
 #include <vector>
 
-// ── Minimal GDExtension types (from gdextension_interface.gen.h) ─────────────
-using GDExtensionObjectPtr              = void*;
-using GDExtensionInitializationFunction = void*;
+// GDExtension types — pulled directly from the Godot source tree,
+// which is on the include path via CMake INTERFACE_INCLUDE_DIRECTORIES.
+#include "core/extension/gdextension_interface.gen.h"
+
+// VSL has no GDExtension classes to register — these callbacks are no-ops.
+static void gdext_noop(void* /*userdata*/, GDExtensionInitializationLevel /*level*/) {}
+
+// LibGodot requires a non-null init function to bootstrap its internal extension.
+static GDExtensionBool vsl_gdext_init(
+    GDExtensionInterfaceGetProcAddress /*p_get_proc_address*/,
+    GDExtensionClassLibraryPtr         /*p_library*/,
+    GDExtensionInitialization*         r_initialization)
+{
+    r_initialization->minimum_initialization_level = GDEXTENSION_INITIALIZATION_SCENE;
+    r_initialization->userdata    = nullptr;
+    r_initialization->initialize  = gdext_noop;
+    r_initialization->deinitialize = gdext_noop;
+    return 1;
+}
 
 extern "C" {
     GDExtensionObjectPtr libgodot_create_godot_instance(
@@ -57,12 +73,15 @@ GodotInitResult godot_init(const std::string& project_path) {
 
     // Pass --path <project> so Godot finds project.godot.
     std::vector<std::string> args_str = {"vsl_main", "--path", project_path};
+#ifdef DEBUG
+    args_str.push_back("--vulkan-validation");
+#endif
     std::vector<char*> argv;
     for (auto& s : args_str)
         argv.push_back(const_cast<char*>(s.c_str()));
 
     g_instance = libgodot_create_godot_instance(
-        static_cast<int>(argv.size()), argv.data(), nullptr);
+        static_cast<int>(argv.size()), argv.data(), vsl_gdext_init);
 
     if (!g_instance)
         return {false, "libgodot_create_godot_instance returned null"};
@@ -78,7 +97,9 @@ GodotInitResult godot_init(const std::string& project_path) {
 
 bool godot_iterate() {
     if (!g_instance || !g_fn_iteration) return false;
-    return g_fn_iteration(g_instance);
+    // GodotInstance::iteration() returns true when Godot wants to quit.
+    // Our contract: true = still running, false = shutdown requested.
+    return !g_fn_iteration(g_instance);
 }
 
 void godot_shutdown() {

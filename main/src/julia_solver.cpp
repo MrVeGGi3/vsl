@@ -1,8 +1,10 @@
 #include "julia_api.h"
 
+#include <climits>
 #include <cstdio>
 #include <cstring>
 #include <string>
+#include <unistd.h>
 
 #include <julia.h>
 
@@ -32,15 +34,37 @@ int vsl_solver_init(const char* sysimage_path) {
     // Phase 2: activate the solver project and load the module.
     (void)sysimage_path;
 
-    // Activate solver project so Julia finds VSLSolver without installing it.
-    const char* activate_cmd =
-        "import Pkg; Pkg.activate(joinpath(@__DIR__, "
-        "\"../../../solver\"), io=devnull)";
+    // @__DIR__ expands to "." in jl_eval_string (no source file context).
+    // Use /proc/self/exe to compute an absolute path that works regardless of cwd.
+    // Binary lives at  .../vsl/main/<build>/vsl_main
+    // Solver lives at  .../vsl/solver/
+    char exe_buf[PATH_MAX];
+    ssize_t exe_len = readlink("/proc/self/exe", exe_buf, PATH_MAX - 1);
+    if (exe_len < 0) {
+        std::fprintf(stderr, "[vsl] cannot resolve binary path via /proc/self/exe\n");
+        return -1;
+    }
+    exe_buf[exe_len] = '\0';
+
+    // Strip filename to get the build directory, then go up 2 levels to vsl/.
+    std::string build_dir(exe_buf);
+    build_dir = build_dir.substr(0, build_dir.rfind('/'));  // → .../vsl/main/<build>
+    std::string solver_path = build_dir + "/../../solver";  // → .../vsl/solver
+
+    char activate_cmd[2048];
+    std::snprintf(activate_cmd, sizeof(activate_cmd),
+        "import Pkg; Pkg.activate(abspath(\"%s\"), io=devnull)",
+        solver_path.c_str());
     jl_eval_string(activate_cmd);
     if (check_julia_error("Pkg.activate")) return -1;
 
     jl_eval_string("using VSLSolver");
     if (check_julia_error("using VSLSolver")) return -1;
+
+    // SatelliteToolboxTle is used internally by VSLSolver but not re-exported.
+    // Import it into Main so jl_eval_string calls in vsl_propagate_orbit can use it.
+    jl_eval_string("using SatelliteToolboxTle");
+    if (check_julia_error("using SatelliteToolboxTle")) return -1;
 
     g_module = (jl_module_t*)jl_eval_string("VSLSolver");
     if (check_julia_error("get VSLSolver module") || !g_module) return -1;
@@ -75,20 +99,8 @@ int vsl_propagate_orbit(
         return -1;
     }
 
-    // read_tle(line1, line2)
-    jl_function_t* read_tle = jl_get_function(
-        (jl_module_t*)jl_eval_string("SatelliteToolboxTle"), "read_tle");
-    if (!read_tle || check_julia_error("get read_tle")) return -1;
-
-    jl_value_t* tle = jl_call2(read_tle,
-        jl_cstr_to_string(tle_line1), jl_cstr_to_string(tle_line2));
-    if (check_julia_error("read_tle") || !tle) return -1;
-
-    // propagate_orbit(tle, duration_s; step_s=step_s)
-    // Julia signature: propagate_orbit(tle, duration_s; step_s) -> (times, pos, vel)
-
-    // Call with keyword arg via jl_call — use named tuple workaround
-    // Simpler: use jl_eval_string to construct the call with literal args
+    // Build the full propagation call as a Julia expression.
+    // SatelliteToolboxTle is imported into Main by vsl_solver_init.
     char call_buf[512];
     std::snprintf(call_buf, sizeof(call_buf),
         "let r = VSLSolver.propagate_orbit("
@@ -109,11 +121,7 @@ int vsl_propagate_orbit(
     int n = (int)jl_unbox_int64(jl_call1(length_fn, positions));
     *out_count = n;
 
-    // Copy Vec3 elements into out_positions (Float32, x,y,z interleaved)
-    jl_function_t* norm_fn = jl_get_function(
-        (jl_module_t*)jl_eval_string("LinearAlgebra"), "norm");
-    (void)norm_fn;
-
+    // Copy Vec3 elements into out_positions (Float32, x,y,z interleaved, km)
     for (int i = 0; i < n; ++i) {
         jl_value_t* idx = jl_box_int64(i + 1);  // Julia 1-indexed
         jl_value_t* vec = jl_call2(getindex, positions, idx);

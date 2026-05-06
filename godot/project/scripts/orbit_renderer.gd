@@ -25,14 +25,16 @@ func _process(_delta: float) -> void:
 	_draw_orbit()
 
 func _draw_orbit() -> void:
-	var mesh := $OrbitLine as ImmediateMesh
-	if mesh == null:
+	var mesh_instance := $OrbitLine as MeshInstance3D
+	if mesh_instance == null:
 		return
+	if not mesh_instance.mesh is ArrayMesh:
+		mesh_instance.mesh = ArrayMesh.new()
+	var mesh := mesh_instance.mesh as ArrayMesh
 	mesh.clear_surfaces()
 	if _point_count < 2:
 		return
-
-	mesh.surface_begin(Mesh.PRIMITIVE_LINE_STRIP)
-	for i in _point_count:
-		mesh.surface_add_vertex(_positions[i])
-	mesh.surface_end()
+	var arrays: Array = []
+	arrays.resize(Mesh.ARRAY_MAX)
+	arrays[Mesh.ARRAY_VERTEX] = _positions.slice(0, _point_count)
+	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_LINE_STRIP, arrays)
