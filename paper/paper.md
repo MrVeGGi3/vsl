@@ -10,7 +10,7 @@ tags:
   - CubeSat
 authors:
   - name: Matheus Veras Soares
-    orcid: 0000-0000-0000-0000
+    orcid: 0009-0008-4566-4739
     affiliation: 1
 affiliations:
   - name: Instituto Tecnológico de Aeronáutica, São José dos Campos, SP, Brazil
