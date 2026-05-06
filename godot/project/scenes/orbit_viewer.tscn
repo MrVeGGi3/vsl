@@ -1,6 +1,7 @@
-[gd_scene load_steps=3 format=3 uid="uid://orbit_viewer"]
+[gd_scene load_steps=4 format=3 uid="uid://orbit_viewer"]
 
 [ext_resource type="Script" path="res://scripts/orbit_renderer.gd" id="1"]
+[ext_resource type="Script" path="res://scripts/sat_marker.gd" id="2"]
 
 [sub_resource type="StandardMaterial3D" id="LineMat"]
 albedo_color = Color(0.2, 0.6, 1.0, 1.0)
@@ -15,3 +16,4 @@ script = ExtResource("1")
 material_override = SubResource("LineMat")
 
 [node name="SatelliteMarker" type="MeshInstance3D" parent="."]
+script = ExtResource("2")

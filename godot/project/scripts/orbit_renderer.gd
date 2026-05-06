@@ -143,3 +143,13 @@ func _update_gs_line(bridge: Node) -> void:
 
 func invalidate_gs_marker() -> void:
 	_gs_marker_ref = null
+
+func get_current_sat_position() -> Vector3:
+	if _point_count <= 0:
+		return Vector3.ZERO
+	var bridge := get_node_or_null("/root/Main/SolverBridge")
+	if bridge == null or not bridge.has_method("get_sim_time_s"):
+		return _positions[0]
+	var t_now := bridge.get_sim_time_s() as float
+	var idx := clampi(int((t_now - _orbit_start_t_s) / _orbit_step_s), 0, _point_count - 1)
+	return _positions[idx]

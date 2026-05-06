@@ -215,6 +215,42 @@ godot/
 
 ---
 
+## Fase 4 — VR Quest Link (implementado)
+
+### Arquivos novos
+| Arquivo | Papel |
+|---------|-------|
+| `scripts/vr_controller.gd` | Input Quest 3S: grip-rotate (esquerda), ray-pointer + zoom (direita) |
+| `scripts/vr_ui_panel.gd` | Painel de análise em SubViewport 3D (world-space) |
+| `scripts/sat_marker.gd` | Esfera pulsante na posição atual do satélite |
+| `shaders/sat_glow.gdshader` | Shader pulsante para o marcador |
+
+### Interações implementadas
+- **Grip esquerdo:** segura e gira o globo+órbita (delta de posição → rotação)
+- **Ray direito:** laser azul aponta para o painel 3D
+- **Trigger direito:** seleciona elemento de UI via InputEventMouseButton → SubViewport
+- **Thumbstick direito (Y):** zoom (escala Earth + OrbitViewer em sincronia)
+- **Botão B/Y:** toggle do VRUIPanel
+- **Haptic:** feedback em grip, trigger e toggle
+
+### Posicionamento VR
+- `XROrigin3D` posicionado em `(0, 0, 20)` — mesma vantagem da câmera desktop
+- Usuário "flutua a 20.000 km da Terra" → experiência de astronauta
+- `VRUIPanel` em `(0.35, 1.5, 19.0)` — ao alcance do braço, lado direito
+- `VRUIPanel.collision_layer = 4` (layer 3) → detectado pelo RayCast3D do controller
+
+### Plano de teste manual VR (Quest 3S via Quest Link)
+1. Iniciar `vsl_main` com projeto Godot + Quest conectado via USB-C 3.2
+2. Verificar que XRServer encontra OpenXR e `use_xr = true` é setado
+3. Confirmar que `UILayer` fica oculto e `VRUIPanel` aparece em world space
+4. Testar grip-rotate: pegar controller esquerdo + mover → Terra e órbita giram
+5. Testar ray pointer: apontar controller direito para painel → laser visível
+6. Testar trigger: apontar para botão "↺" → dados atualizam
+7. Testar zoom: thumbstick direito ↑↓ → escala da cena muda com clamp 0.1×–3.0×
+8. Confirmar 90 Hz estável (Godot Profiler → frame time < 8ms)
+
+---
+
 ## Regras de Qualidade
 
 - Nenhuma alocação heap em _process() — verificar com Godot Profiler
