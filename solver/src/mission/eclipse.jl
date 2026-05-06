@@ -1,9 +1,9 @@
 using StaticArrays
 using SatelliteToolboxCelestialBodies
 
-const R_EARTH_KM = 6371.0
-const R_SUN_KM   = 696000.0
-const AU_KM      = 1.496e8
+# R_EARTH_KM defined in access.jl (included earlier in the module)
+const R_SUN_KM = 696000.0
+const AU_KM    = 1.496e8
 
 """
     in_eclipse(r_eci::Vec3, sun_eci::Vec3) -> Bool

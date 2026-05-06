@@ -25,46 +25,47 @@ static bool check_julia_error(const char* context) {
     return true;
 }
 
+// Resolve the absolute path to the solver/ directory, relative to the binary.
+// Binary lives at  .../vsl/main/<build>/vsl_main
+// Solver lives at  .../vsl/solver/
+static std::string solver_abs_path() {
+    char exe_buf[PATH_MAX];
+    ssize_t len = readlink("/proc/self/exe", exe_buf, PATH_MAX - 1);
+    if (len < 0) return "";
+    exe_buf[len] = '\0';
+    std::string build_dir(exe_buf);
+    build_dir = build_dir.substr(0, build_dir.rfind('/'));
+    return build_dir + "/../../solver";
+}
+
 // ── Public C API ──────────────────────────────────────────────────────────────
 
 extern "C" {
 
 int vsl_solver_init(const char* sysimage_path) {
-    // Phase 3: load PackageCompiler sysimage here.
-    // Phase 2: activate the solver project and load the module.
-    (void)sysimage_path;
+    (void)sysimage_path;  // Phase 3+: load PackageCompiler sysimage here
 
-    // @__DIR__ expands to "." in jl_eval_string (no source file context).
-    // Use /proc/self/exe to compute an absolute path that works regardless of cwd.
-    // Binary lives at  .../vsl/main/<build>/vsl_main
-    // Solver lives at  .../vsl/solver/
-    char exe_buf[PATH_MAX];
-    ssize_t exe_len = readlink("/proc/self/exe", exe_buf, PATH_MAX - 1);
-    if (exe_len < 0) {
-        std::fprintf(stderr, "[vsl] cannot resolve binary path via /proc/self/exe\n");
+    std::string solver_path = solver_abs_path();
+    if (solver_path.empty()) {
+        std::fprintf(stderr, "[vsl] cannot resolve solver path\n");
         return -1;
     }
-    exe_buf[exe_len] = '\0';
 
-    // Strip filename to get the build directory, then go up 2 levels to vsl/.
-    std::string build_dir(exe_buf);
-    build_dir = build_dir.substr(0, build_dir.rfind('/'));  // → .../vsl/main/<build>
-    std::string solver_path = build_dir + "/../../solver";  // → .../vsl/solver
-
-    char activate_cmd[2048];
-    std::snprintf(activate_cmd, sizeof(activate_cmd),
+    char cmd[2048];
+    std::snprintf(cmd, sizeof(cmd),
         "import Pkg; Pkg.activate(abspath(\"%s\"), io=devnull)",
         solver_path.c_str());
-    jl_eval_string(activate_cmd);
+    jl_eval_string(cmd);
     if (check_julia_error("Pkg.activate")) return -1;
 
     jl_eval_string("using VSLSolver");
     if (check_julia_error("using VSLSolver")) return -1;
 
-    // SatelliteToolboxTle is used internally by VSLSolver but not re-exported.
-    // Import it into Main so jl_eval_string calls in vsl_propagate_orbit can use it.
     jl_eval_string("using SatelliteToolboxTle");
     if (check_julia_error("using SatelliteToolboxTle")) return -1;
+
+    jl_eval_string("using Dates");
+    if (check_julia_error("using Dates")) return -1;
 
     g_module = (jl_module_t*)jl_eval_string("VSLSolver");
     if (check_julia_error("get VSLSolver module") || !g_module) return -1;
@@ -99,8 +100,6 @@ int vsl_propagate_orbit(
         return -1;
     }
 
-    // Build the full propagation call as a Julia expression.
-    // SatelliteToolboxTle is imported into Main by vsl_solver_init.
     char call_buf[512];
     std::snprintf(call_buf, sizeof(call_buf),
         "let r = VSLSolver.propagate_orbit("
@@ -111,8 +110,6 @@ int vsl_propagate_orbit(
     jl_value_t* result = jl_eval_string(call_buf);
     if (check_julia_error("propagate_orbit") || !result) return -1;
 
-    // result is a Tuple{Vector{Float64}, Vector{Vec3}, Vector{Vec3}}
-    // Extract positions (index 2, 1-based in Julia)
     jl_function_t* getindex = jl_get_function(jl_base_module, "getindex");
     jl_value_t* positions   = jl_call2(getindex, result, jl_box_int64(2));
     if (check_julia_error("getindex positions") || !positions) return -1;
@@ -121,13 +118,11 @@ int vsl_propagate_orbit(
     int n = (int)jl_unbox_int64(jl_call1(length_fn, positions));
     *out_count = n;
 
-    // Copy Vec3 elements into out_positions (Float32, x,y,z interleaved, km)
     for (int i = 0; i < n; ++i) {
-        jl_value_t* idx = jl_box_int64(i + 1);  // Julia 1-indexed
+        jl_value_t* idx = jl_box_int64(i + 1);
         jl_value_t* vec = jl_call2(getindex, positions, idx);
         if (check_julia_error("getindex vec")) return -1;
 
-        // Vec3 is an SVector{3,Float64} — access via getindex
         auto x = (float)jl_unbox_float64(jl_call2(getindex, vec, jl_box_int64(1)));
         auto y = (float)jl_unbox_float64(jl_call2(getindex, vec, jl_box_int64(2)));
         auto z = (float)jl_unbox_float64(jl_call2(getindex, vec, jl_box_int64(3)));
@@ -140,20 +135,142 @@ int vsl_propagate_orbit(
     return 0;
 }
 
-int vsl_compute_access(
-    const char* /*tle_line1*/,
-    const char* /*tle_line2*/,
-    double      /*gs_lat_deg*/,
-    double      /*gs_lon_deg*/,
-    double      /*gs_min_elevation_deg*/,
-    double      /*duration_s*/,
-    double*     /*out_start_times*/,
-    double*     /*out_end_times*/,
-    int*        out_count,
-    int         /*max_windows*/
+// Helper: load a TLE and compute its Julian epoch date into a Julia variable pair.
+// Sets Main._vsl_tle, Main._vsl_t, Main._vsl_pos, Main._vsl_jd.
+static int _jl_propagate_tle(const char* l1, const char* l2, double dur_s) {
+    // Store TLE strings in Julia globals so embedded newlines/quotes don't break
+    jl_set_global(jl_main_module, jl_symbol("_vsl_l1"), jl_cstr_to_string(l1));
+    jl_set_global(jl_main_module, jl_symbol("_vsl_l2"), jl_cstr_to_string(l2));
+
+    char cmd[256];
+    std::snprintf(cmd, sizeof(cmd),
+        "let tle = SatelliteToolboxTle.read_tle(_vsl_l1, _vsl_l2),"
+        "    jd  = VSLSolver._tle_jd(_vsl_l1),"
+        "    (t, pos, _) = VSLSolver.propagate_orbit(tle, %.1f; step_s=30.0);"
+        "    global _vsl_t=t; global _vsl_pos=pos; global _vsl_jd=jd; nothing"
+        "end", dur_s);
+
+    jl_eval_string(cmd);
+    return check_julia_error("_jl_propagate_tle") ? -1 : 0;
+}
+
+int vsl_compute_eclipse(
+    const char*       tle_line1,
+    const char*       tle_line2,
+    double            duration_s,
+    VslEclipseResult* out
 ) {
-    // Phase 3 — placeholder
-    *out_count = 0;
+    if (!g_initialized) return -1;
+    if (_jl_propagate_tle(tle_line1, tle_line2, duration_s) != 0) return -1;
+
+    jl_value_t* result = jl_eval_string(
+        "VSLSolver.eclipse_fraction(_vsl_pos, _vsl_t, _vsl_jd)");
+    if (check_julia_error("vsl_compute_eclipse") || !result) return -1;
+
+    out->fraction  = (float)jl_unbox_float64(result);
+    out->n_periods = 0;  // period-by-period detail not yet exposed
+    return 0;
+}
+
+int vsl_compute_access(
+    const char*      tle_line1,
+    const char*      tle_line2,
+    double           gs_lat_deg,
+    double           gs_lon_deg,
+    double           gs_min_elev_deg,
+    double           duration_s,
+    VslAccessWindow* out_windows,
+    int*             out_count,
+    int              max_windows
+) {
+    if (!g_initialized) return -1;
+    if (_jl_propagate_tle(tle_line1, tle_line2, duration_s) != 0) return -1;
+
+    char cmd[256];
+    std::snprintf(cmd, sizeof(cmd),
+        "VSLSolver.access_windows(_vsl_pos, _vsl_t, %.6f, %.6f, _vsl_jd;"
+        "    min_elev_deg=%.2f)",
+        gs_lat_deg, gs_lon_deg, gs_min_elev_deg);
+
+    jl_value_t* wins_jl = jl_eval_string(cmd);
+    if (check_julia_error("vsl_compute_access") || !wins_jl) return -1;
+
+    jl_function_t* length_fn = jl_get_function(jl_base_module, "length");
+    jl_function_t* getindex  = jl_get_function(jl_base_module, "getindex");
+
+    int n = (int)jl_unbox_int64(jl_call1(length_fn, wins_jl));
+    n = (n < max_windows) ? n : max_windows;
+    *out_count = n;
+
+    for (int i = 0; i < n; ++i) {
+        jl_value_t* win = jl_call2(getindex, wins_jl, jl_box_int64(i + 1));
+        if (check_julia_error("getindex win")) return -1;
+
+        auto ts  = jl_unbox_float64(jl_call2(getindex, win, jl_box_int64(1)));
+        auto te  = jl_unbox_float64(jl_call2(getindex, win, jl_box_int64(2)));
+        auto el  = (float)jl_unbox_float64(jl_call2(getindex, win, jl_box_int64(3)));
+
+        out_windows[i] = {ts, te, el};
+    }
+
+    return 0;
+}
+
+int vsl_compute_hohmann(
+    double             r1_km,
+    double             r2_km,
+    VslManeuverResult* out
+) {
+    if (!g_initialized) return -1;
+
+    char cmd[256];
+    std::snprintf(cmd, sizeof(cmd),
+        "VSLSolver.hohmann_transfer(%.6f, %.6f)", r1_km, r2_km);
+
+    jl_value_t* result = jl_eval_string(cmd);
+    if (check_julia_error("vsl_compute_hohmann") || !result) return -1;
+
+    jl_function_t* getindex = jl_get_function(jl_base_module, "getindex");
+    out->dv1_kms = (float)jl_unbox_float64(jl_call2(getindex, result, jl_box_int64(1)));
+    out->dv2_kms = (float)jl_unbox_float64(jl_call2(getindex, result, jl_box_int64(2)));
+    out->tof_s   = (float)jl_unbox_float64(jl_call2(getindex, result, jl_box_int64(3)));
+
+    return 0;
+}
+
+int vsl_generate_report_json(
+    const char* tle_line1,
+    const char* tle_line2,
+    double      gs_lat_deg,
+    double      gs_lon_deg,
+    double      gs_min_elev_deg,
+    double      target_alt_km,
+    double      duration_s,
+    char*       out_json,
+    int         out_json_maxlen
+) {
+    if (!g_initialized) return -1;
+
+    jl_set_global(jl_main_module, jl_symbol("_vsl_l1"), jl_cstr_to_string(tle_line1));
+    jl_set_global(jl_main_module, jl_symbol("_vsl_l2"), jl_cstr_to_string(tle_line2));
+
+    char cmd[512];
+    std::snprintf(cmd, sizeof(cmd),
+        "let r = VSLSolver.mission_report(_vsl_l1, _vsl_l2;"
+        "    gs_lat=%.6f, gs_lon=%.6f, gs_min_elev=%.2f,"
+        "    target_alt_km=%.2f, duration_s=%.1f);"
+        "    VSLSolver.to_json(r)"
+        "end",
+        gs_lat_deg, gs_lon_deg, gs_min_elev_deg,
+        target_alt_km, duration_s);
+
+    jl_value_t* result = jl_eval_string(cmd);
+    if (check_julia_error("vsl_generate_report_json") || !result) return -1;
+
+    const char* json_str = jl_string_ptr(result);
+    std::strncpy(out_json, json_str, out_json_maxlen - 1);
+    out_json[out_json_maxlen - 1] = '\0';
+
     return 0;
 }
 

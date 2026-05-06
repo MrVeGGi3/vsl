@@ -1,5 +1,7 @@
 module VSLSolver
 
+using Dates
+using LinearAlgebra
 using StaticArrays
 using SatelliteToolboxTle
 using SatelliteToolboxPropagators
@@ -15,15 +17,17 @@ include("orbital/access.jl")
 include("mission/eclipse.jl")
 include("mission/power_budget.jl")
 include("mission/link_budget.jl")
+include("mission/report.jl")
 include("mdo/engine.jl")
 include("export/c_api.jl")
 
 export Vec3, Vec6, Quat
 export propagate_orbit, propagate_orbit!
 export hohmann_transfer, lambert_problem
-export ground_track, access_windows
-export eclipse_fraction
+export gmst_from_jd, latlon_to_ecef, ground_track, access_windows
+export eclipse_fraction, in_eclipse
 export power_budget
 export link_budget
+export MissionReport, mission_report, to_json
 
 end # module VSLSolver

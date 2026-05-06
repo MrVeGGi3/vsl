@@ -2,7 +2,7 @@
 
 julia_version = "1.12.5"
 manifest_format = "2.0"
-project_hash = "205bb54ebeb782c3aba7f798cc9c44bd3ceb569e"
+project_hash = "f1867333b7e1fb55656850f0192a7bf6c830e3c0"
 
 [[deps.AbstractFFTs]]
 deps = ["LinearAlgebra"]
@@ -1675,6 +1675,12 @@ version = "1.28.0"
     Latexify = "23fbe1c1-3f47-55db-b15f-69d7ec21a316"
     NaNMath = "77ba4419-2d1f-58cd-9bb1-8ffee604a2e3"
     Printf = "de0858da-6303-5e67-8744-51eddeeeb8d7"
+
+[[deps.VSLSolver]]
+deps = ["BenchmarkTools", "CairoMakie", "Dates", "GLMakie", "Pluto", "SatelliteToolboxCelestialBodies", "SatelliteToolboxPropagators", "SatelliteToolboxTle", "StaticArrays"]
+path = "."
+uuid = "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
+version = "0.1.0"
 
 [[deps.Wayland_jll]]
 deps = ["Artifacts", "EpollShim_jll", "Expat_jll", "JLLWrappers", "Libdl", "Libffi_jll"]
