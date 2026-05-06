@@ -32,11 +32,13 @@ func set_ground_station(lat_deg: float, lon_deg: float) -> void:
 	var lat := deg_to_rad(lat_deg)
 	var lon := deg_to_rad(lon_deg)
 	const R := 6.371
-	# Godot sphere: Y-up, lon=0 toward +Z, lon increases CCW from above.
+	# Godot SphereMesh: U=0 at +Z, increasing CCW from above.
+	# Standard equirect texture has lon=0° at U=0.5 → -Z on the sphere.
+	# Negate X and Z so lon=0 lands on -Z (matching U=0.5 in the texture).
 	var pos := Vector3(
-		R * cos(lat) * sin(lon),
+		-R * cos(lat) * sin(lon),
 		R * sin(lat),
-		R * cos(lat) * cos(lon)
+		-R * cos(lat) * cos(lon)
 	)
 
 	var sphere := SphereMesh.new()
