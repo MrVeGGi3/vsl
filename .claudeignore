@@ -1,0 +1,21 @@
+# Build artifacts — C++
+main/build/
+main/build_release/
+
+# Julia package lock (gerado automaticamente, não editável)
+solver/Manifest.toml
+
+# Texturas binárias — arquivos grandes, sem valor de leitura
+godot/project/textures/
+
+# Assets binários do Godot
+godot/project/assets/
+
+# PDF do paper (binário)
+paper/figures/*.pdf
+
+# Docker layer cache
+.docker/
+
+# Git internals
+.git/
