@@ -130,7 +130,7 @@ func _try_interact() -> void:
 	var collider := _ray_cast.get_collider()
 	if collider == null:
 		return
-	var panel := collider.get_parent()
+	var panel: Node = collider.get_parent()
 	if panel and panel.has_method("on_ray_select"):
 		panel.on_ray_select(_ray_cast.get_collision_point())
 		trigger_haptic_pulse("haptic", 0.0, HAPTIC_DUR * 0.5, HAPTIC_AMP * 0.5, 0.0)

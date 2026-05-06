@@ -37,7 +37,7 @@ func _build_speed_buttons() -> void:
 		var btn := Button.new()
 		btn.text = "×%d" % speed
 		btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		var s := speed  # capture for closure
+		var s: int = speed  # capture for closure
 		btn.pressed.connect(func(): _set_speed(s))
 		hbox.add_child(btn)
 
@@ -58,7 +58,7 @@ func _process(_delta: float) -> void:
 	var dirty := false
 
 	if bridge.has_method("get_sim_time_s"):
-		var t := bridge.get_sim_time_s()
+		var t: float = bridge.get_sim_time_s()
 		if t != _t_now:
 			_t_now = t
 			dirty  = true
