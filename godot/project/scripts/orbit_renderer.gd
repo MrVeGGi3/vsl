@@ -18,6 +18,7 @@ var _eclipse_starts: PackedFloat64Array = PackedFloat64Array()
 var _eclipse_ends:   PackedFloat64Array = PackedFloat64Array()
 var _access_windows: Array = []
 
+var _orbit_multimesh: MultiMeshInstance3D
 var _gs_line_mesh:     ImmediateMesh
 var _gs_line_instance: MeshInstance3D
 var _gs_marker_ref:    Node3D = null
@@ -30,13 +31,34 @@ func _ready() -> void:
 	for i in MAX_POINTS:
 		_colors[i] = COLOR_SUNLIT
 
+	# MultiMesh with spheres — PRIMITIVE_LINE_STRIP is 1px on Vulkan and invisible
+	var dot_mesh := SphereMesh.new()
+	dot_mesh.radius = 0.025
+	dot_mesh.height = 0.05
+	dot_mesh.radial_segments = 4
+	dot_mesh.rings = 2
+	var dot_mat := StandardMaterial3D.new()
+	dot_mat.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
+	dot_mat.vertex_color_use_as_albedo = true
+	dot_mat.emission_enabled = true
+	dot_mat.emission_energy_multiplier = 2.0
+	dot_mesh.surface_set_material(0, dot_mat)
+
+	var mm := MultiMesh.new()
+	mm.transform_format = MultiMesh.TRANSFORM_3D
+	mm.use_colors = true
+	mm.mesh = dot_mesh
+	mm.instance_count = MAX_POINTS
+	mm.visible_instance_count = 0
+
+	_orbit_multimesh = MultiMeshInstance3D.new()
+	_orbit_multimesh.multimesh = mm
+	add_child(_orbit_multimesh)
+
+	# Hide the legacy OrbitLine node (replaced by MultiMesh)
 	var orbit_line := $OrbitLine as MeshInstance3D
 	if orbit_line:
-		var shader := preload("res://shaders/orbit_line.gdshader")
-		var mat := ShaderMaterial.new()
-		mat.shader = shader
-		mat.set_shader_parameter("glow_strength", 1.5)
-		orbit_line.material_override = mat
+		orbit_line.visible = false
 
 	_gs_line_mesh = ImmediateMesh.new()
 	_gs_line_instance = MeshInstance3D.new()
@@ -99,18 +121,12 @@ func _classify(t: float) -> Color:
 	return COLOR_SUNLIT
 
 func _draw_orbit() -> void:
-	var mesh_instance := $OrbitLine as MeshInstance3D
-	if mesh_instance == null or _point_count < 2:
-		return
-	if not mesh_instance.mesh is ArrayMesh:
-		mesh_instance.mesh = ArrayMesh.new()
-	var mesh := mesh_instance.mesh as ArrayMesh
-	mesh.clear_surfaces()
-	var arrays: Array = []
-	arrays.resize(Mesh.ARRAY_MAX)
-	arrays[Mesh.ARRAY_VERTEX] = _positions.slice(0, _point_count)
-	arrays[Mesh.ARRAY_COLOR]  = _colors.slice(0, _point_count)
-	mesh.add_surface_from_arrays(Mesh.PRIMITIVE_LINE_STRIP, arrays)
+	var mm := _orbit_multimesh.multimesh as MultiMesh
+	mm.visible_instance_count = _point_count
+	for i in _point_count:
+		mm.set_instance_transform(i, Transform3D(Basis(), _positions[i]))
+		var c := _colors[i]
+		mm.set_instance_color(i, Color(c.r * 2.0, c.g * 2.0, c.b * 2.0))
 
 func _update_gs_line(bridge: Node) -> void:
 	_gs_line_mesh.clear_surfaces()

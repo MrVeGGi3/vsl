@@ -11,6 +11,11 @@ const VR_PANEL_POS  := Vector3(0.35, 1.5, 19.0)
 var _vr_active  := false
 var _vr_aligned := false
 
+func _unhandled_key_input(event: InputEvent) -> void:
+	if not _vr_active and event is InputEventKey and event.pressed and not event.echo:
+		if event.keycode == KEY_TAB:
+			$UILayer.visible = not $UILayer.visible
+
 func _process(_delta: float) -> void:
 	if _vr_active and not _vr_aligned:
 		_try_align_xr_to_earth()

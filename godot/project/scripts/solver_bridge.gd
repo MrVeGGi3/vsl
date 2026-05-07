@@ -48,7 +48,7 @@ func copy_positions_to(arr: PackedVector3Array, count: int) -> void:
 	var flat: Array = _data.get("positions_flat", [])
 	var n := mini(count, flat.size() / 3)
 	for i in n:
-		arr[i] = Vector3(float(flat[i * 3]), float(flat[i * 3 + 1]), float(flat[i * 3 + 2]))
+		arr[i] = Vector3(float(flat[i * 3]), float(flat[i * 3 + 1]), float(flat[i * 3 + 2])) / 1000.0
 
 func get_orbit_start_t_s() -> float:
 	return 0.0
