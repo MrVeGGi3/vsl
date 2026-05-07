@@ -18,5 +18,8 @@ fi
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BUILD_DIR="$SCRIPT_DIR/main/build_release"
 
+# JULIA_NUM_THREADS=1: prevents Julia 1.12 parallel GC/task-scheduler threads
+# from conflicting with Godot's libuv event loop (jl_threadfun crash).
 exec env XR_RUNTIME_JSON="$WIVRN_JSON" \
+    JULIA_NUM_THREADS=1 \
     "$BUILD_DIR/vsl_main" "" "$SCRIPT_DIR/godot/project" "$@"

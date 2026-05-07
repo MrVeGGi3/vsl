@@ -25,7 +25,7 @@ export Vec3, Vec6, Quat
 export propagate_orbit, propagate_orbit!
 export hohmann_transfer, lambert_problem
 export gmst_from_jd, latlon_to_ecef, ground_track, access_windows
-export eclipse_fraction, in_eclipse
+export eclipse_fraction, eclipse_periods, in_eclipse
 export power_budget
 export link_budget
 export MissionReport, mission_report, to_json

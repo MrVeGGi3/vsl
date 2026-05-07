@@ -114,21 +114,25 @@ int vsl_propagate_orbit(
         "%.1f; step_s=%.1f); r end",
         tle_line1, tle_line2, duration_s, step_s);
 
-    jl_value_t* result = jl_eval_string(call_buf);
-    if (check_julia_error("propagate_orbit") || !result) return -1;
+    jl_value_t* result    = nullptr;
+    jl_value_t* positions = nullptr;
+    jl_value_t* vec       = nullptr;
+    JL_GC_PUSH3(&result, &positions, &vec);
+
+    result = jl_eval_string(call_buf);
+    if (check_julia_error("propagate_orbit") || !result) { JL_GC_POP(); return -1; }
 
     jl_function_t* getindex = jl_get_function(jl_base_module, "getindex");
-    jl_value_t* positions   = jl_call2(getindex, result, jl_box_int64(2));
-    if (check_julia_error("getindex positions") || !positions) return -1;
+    positions = jl_call2(getindex, result, jl_box_int64(2));
+    if (check_julia_error("getindex positions") || !positions) { JL_GC_POP(); return -1; }
 
     jl_function_t* length_fn = jl_get_function(jl_base_module, "length");
     int n = (int)jl_unbox_int64(jl_call1(length_fn, positions));
     *out_count = n;
 
     for (int i = 0; i < n; ++i) {
-        jl_value_t* idx = jl_box_int64(i + 1);
-        jl_value_t* vec = jl_call2(getindex, positions, idx);
-        if (check_julia_error("getindex vec")) return -1;
+        vec = jl_call2(getindex, positions, jl_box_int64(i + 1));
+        if (check_julia_error("getindex vec")) { JL_GC_POP(); return -1; }
 
         auto x = (float)jl_unbox_float64(jl_call2(getindex, vec, jl_box_int64(1)));
         auto y = (float)jl_unbox_float64(jl_call2(getindex, vec, jl_box_int64(2)));
@@ -139,6 +143,7 @@ int vsl_propagate_orbit(
         out_positions[i * 3 + 2] = z;
     }
 
+    JL_GC_POP();
     return 0;
 }
 
@@ -176,12 +181,38 @@ int vsl_compute_eclipse(
     if (!g_initialized) return -1;
     if (_jl_propagate_tle(tle_line1, tle_line2, duration_s) != 0) return -1;
 
-    jl_value_t* result = jl_eval_string(
+    jl_value_t* frac = jl_eval_string(
         "VSLSolver.eclipse_fraction(_vsl_pos, _vsl_t, _vsl_jd)");
-    if (check_julia_error("vsl_compute_eclipse") || !result) return -1;
+    if (check_julia_error("eclipse_fraction") || !frac) return -1;
+    out->fraction = (float)jl_unbox_float64(frac);
 
-    out->fraction  = (float)jl_unbox_float64(result);
-    out->n_periods = 0;  // period-by-period detail not yet exposed
+    jl_value_t* periods = nullptr;
+    jl_value_t* period  = nullptr;
+    JL_GC_PUSH2(&periods, &period);
+
+    periods = jl_eval_string(
+        "VSLSolver.eclipse_periods(_vsl_pos, _vsl_t, _vsl_jd)");
+    if (check_julia_error("eclipse_periods") || !periods) {
+        JL_GC_POP();
+        out->n_periods = 0;
+        return 0;
+    }
+
+    jl_function_t* length_fn = jl_get_function(jl_base_module, "length");
+    jl_function_t* getindex  = jl_get_function(jl_base_module, "getindex");
+
+    int n = (int)jl_unbox_int64(jl_call1(length_fn, periods));
+    n = (n < 64) ? n : 64;
+    out->n_periods = n;
+
+    for (int i = 0; i < n; ++i) {
+        period = jl_call2(getindex, periods, jl_box_int64(i + 1));
+        if (check_julia_error("getindex eclipse period")) { JL_GC_POP(); return -1; }
+        out->period_starts[i] = jl_unbox_float64(jl_call2(getindex, period, jl_box_int64(1)));
+        out->period_ends[i]   = jl_unbox_float64(jl_call2(getindex, period, jl_box_int64(2)));
+    }
+
+    JL_GC_POP();
     return 0;
 }
 
@@ -205,8 +236,12 @@ int vsl_compute_access(
         "    min_elev_deg=%.2f)",
         gs_lat_deg, gs_lon_deg, gs_min_elev_deg);
 
-    jl_value_t* wins_jl = jl_eval_string(cmd);
-    if (check_julia_error("vsl_compute_access") || !wins_jl) return -1;
+    jl_value_t* wins_jl = nullptr;
+    jl_value_t* win     = nullptr;
+    JL_GC_PUSH2(&wins_jl, &win);
+
+    wins_jl = jl_eval_string(cmd);
+    if (check_julia_error("vsl_compute_access") || !wins_jl) { JL_GC_POP(); return -1; }
 
     jl_function_t* length_fn = jl_get_function(jl_base_module, "length");
     jl_function_t* getindex  = jl_get_function(jl_base_module, "getindex");
@@ -216,8 +251,8 @@ int vsl_compute_access(
     *out_count = n;
 
     for (int i = 0; i < n; ++i) {
-        jl_value_t* win = jl_call2(getindex, wins_jl, jl_box_int64(i + 1));
-        if (check_julia_error("getindex win")) return -1;
+        win = jl_call2(getindex, wins_jl, jl_box_int64(i + 1));
+        if (check_julia_error("getindex win")) { JL_GC_POP(); return -1; }
 
         auto ts  = jl_unbox_float64(jl_call2(getindex, win, jl_box_int64(1)));
         auto te  = jl_unbox_float64(jl_call2(getindex, win, jl_box_int64(2)));
@@ -226,6 +261,7 @@ int vsl_compute_access(
         out_windows[i] = {ts, te, el};
     }
 
+    JL_GC_POP();
     return 0;
 }
 

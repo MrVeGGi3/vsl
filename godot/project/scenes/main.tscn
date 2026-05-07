@@ -7,6 +7,7 @@
 [ext_resource type="PackedScene" uid="uid://c2ndkf8p7mn6" path="res://scenes/mission_timeline.tscn" id="5"]
 [ext_resource type="Script" uid="uid://da58iyw6wvqdn" path="res://scripts/vr_controller.gd" id="6"]
 [ext_resource type="Script" uid="uid://ol5566taxm0j" path="res://scripts/vr_ui_panel.gd" id="7"]
+[ext_resource type="Script" path="res://scripts/solver_bridge.gd" id="8"]
 
 [node name="Main" type="Node3D" unique_id=1669414694]
 script = ExtResource("1")
@@ -42,6 +43,7 @@ shadow_enabled = true
 [node name="OrbitViewer" parent="." unique_id=697379894 instance=ExtResource("2")]
 
 [node name="SolverBridge" type="Node" parent="." unique_id=1938578492]
+script = ExtResource("8")
 
 [node name="VRUIPanel" type="Node3D" parent="." unique_id=85952421]
 visible = false

@@ -8,8 +8,10 @@ var _eclipse_n_val:    Label
 var _next_pass_val:    Label
 var _avg_dur_val:      Label
 var _n_passes_val:     Label
-var _r1_edit:          LineEdit
-var _r2_edit:          LineEdit
+var _r1_val:           float = 6778.0
+var _r2_val:           float = 42164.0
+var _r1_label:         Label
+var _r2_label:         Label
 var _dv1_val:          Label
 var _dv2_val:          Label
 var _tof_val:          Label
@@ -30,6 +32,7 @@ func _ready() -> void:
 	var scroll := ScrollContainer.new()
 	scroll.size_flags_vertical = Control.SIZE_EXPAND_FILL
 	scroll.horizontal_scroll_mode = ScrollContainer.SCROLL_MODE_DISABLED
+	scroll.focus_mode = Control.FOCUS_NONE
 	outer.add_child(scroll)
 
 	var inner := VBoxContainer.new()
@@ -59,6 +62,7 @@ func _build_header(parent: VBoxContainer) -> void:
 	hbox.add_child(title)
 	var refresh_btn := Button.new()
 	refresh_btn.text = "↺"
+	refresh_btn.focus_mode = Control.FOCUS_NONE
 	refresh_btn.pressed.connect(_refresh_data)
 	hbox.add_child(refresh_btn)
 	parent.add_child(HSeparator.new())
@@ -66,61 +70,49 @@ func _build_header(parent: VBoxContainer) -> void:
 func _build_orbit_section(parent: VBoxContainer) -> void:
 	_section_label(parent, "ORBIT")
 	var grid := _new_grid(parent)
-	_period_val = _grid_row(grid, "Period",   "—", "min")
-	_alt_val    = _grid_row(grid, "Altitude", "—", "km")
-	_incl_val   = _grid_row(grid, "Incl.",    "—", "°")
+	_period_val = _grid_row(grid, "Time per orbit", "—", "min")
+	_alt_val    = _grid_row(grid, "Altitude",       "—", "km")
+	_incl_val   = _grid_row(grid, "Inclination",    "—", "°")
 	parent.add_child(HSeparator.new())
 
 func _build_eclipse_section(parent: VBoxContainer) -> void:
-	_section_label(parent, "ECLIPSE")
+	_section_label(parent, "ECLIPSE  (24 h)")
 	var grid := _new_grid(parent)
-	_eclipse_frac_val = _grid_row(grid, "Fraction", "—", "%")
-	_eclipse_n_val    = _grid_row(grid, "Periods",  "—", "")
+	_eclipse_frac_val = _grid_row(grid, "Time in shadow", "—", "%")
+	_eclipse_n_val    = _grid_row(grid, "Shadow periods", "—", "")
 	parent.add_child(HSeparator.new())
 
 func _build_access_section(parent: VBoxContainer) -> void:
-	_section_label(parent, "GS ACCESS  (Brasília)")
+	_section_label(parent, "GROUND STATION  (Brasília, 5° mask)")
 	var grid := _new_grid(parent)
-	_next_pass_val = _grid_row(grid, "Next pass",  "—", "s")
-	_avg_dur_val   = _grid_row(grid, "Avg dur.",   "—", "min")
-	_n_passes_val  = _grid_row(grid, "N passes",   "—", "")
+	_next_pass_val = _grid_row(grid, "Next pass in",    "—", "s")
+	_avg_dur_val   = _grid_row(grid, "Contact duration", "—", "min")
+	_n_passes_val  = _grid_row(grid, "Passes today",    "—", "")
 	parent.add_child(HSeparator.new())
 
 func _build_maneuver_section(parent: VBoxContainer) -> void:
-	_section_label(parent, "HOHMANN TRANSFER")
-
-	var r1_box := HBoxContainer.new()
-	parent.add_child(r1_box)
-	_make_label(r1_box, "r₁ ")
-	_r1_edit = LineEdit.new()
-	_r1_edit.text = "6778"
-	_r1_edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	r1_box.add_child(_r1_edit)
-	_make_label(r1_box, " km")
-
-	var r2_box := HBoxContainer.new()
-	parent.add_child(r2_box)
-	_make_label(r2_box, "r₂ ")
-	_r2_edit = LineEdit.new()
-	_r2_edit.text = "42164"
-	_r2_edit.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-	r2_box.add_child(_r2_edit)
-	_make_label(r2_box, " km")
+	_section_label(parent, "ORBITAL TRANSFER  (Hohmann)")
+	_r1_label = _spin_row(parent, "From orbit", _r1_val, 100.0,
+		func(v): _r1_val = v; _compute_hohmann())
+	_r2_label = _spin_row(parent, "To orbit  ", _r2_val, 500.0,
+		func(v): _r2_val = v; _compute_hohmann())
 
 	var btn := Button.new()
 	btn.text = "Compute ΔV"
+	btn.focus_mode = Control.FOCUS_NONE
 	btn.pressed.connect(_compute_hohmann)
 	parent.add_child(btn)
 
 	var grid := _new_grid(parent)
-	_dv1_val = _grid_row(grid, "ΔV₁", "—", "km/s")
-	_dv2_val = _grid_row(grid, "ΔV₂", "—", "km/s")
-	_tof_val = _grid_row(grid, "ToF",  "—", "h")
+	_dv1_val = _grid_row(grid, "ΔV departure", "—", "km/s")
+	_dv2_val = _grid_row(grid, "ΔV arrival",   "—", "km/s")
+	_tof_val = _grid_row(grid, "Transit time",  "—", "h")
 	parent.add_child(HSeparator.new())
 
 func _build_report_section(parent: VBoxContainer) -> void:
 	var btn := Button.new()
 	btn.text = "Export JSON Report"
+	btn.focus_mode = Control.FOCUS_NONE
 	btn.pressed.connect(_export_report)
 	parent.add_child(btn)
 
@@ -171,12 +163,10 @@ func _compute_hohmann() -> void:
 	if bridge == null or not bridge.has_method("compute_hohmann"):
 		_set_status("compute_hohmann not available")
 		return
-	var r1 := _r1_edit.text.to_float()
-	var r2 := _r2_edit.text.to_float()
-	if r1 <= 0.0 or r2 <= 0.0:
+	if _r1_val <= 0.0 or _r2_val <= 0.0:
 		_set_status("Invalid radii")
 		return
-	var res: Dictionary = bridge.compute_hohmann(r1, r2)
+	var res: Dictionary = bridge.compute_hohmann(_r1_val, _r2_val)
 	if res.is_empty():
 		_set_status("Hohmann failed")
 		return
@@ -226,6 +216,37 @@ func _make_label(parent: HBoxContainer, text: String) -> void:
 	var lbl := Label.new()
 	lbl.text = text
 	parent.add_child(lbl)
+
+func _spin_row(parent: VBoxContainer, label_text: String, initial: float,
+               step: float, on_change: Callable) -> Label:
+	var row := HBoxContainer.new()
+	parent.add_child(row)
+	_make_label(row, label_text + " ")
+	var btn_minus := Button.new()
+	btn_minus.text = "−"
+	btn_minus.focus_mode = Control.FOCUS_NONE
+	btn_minus.custom_minimum_size = Vector2(28, 0)
+	row.add_child(btn_minus)
+	var val_lbl := Label.new()
+	val_lbl.text = "%.0f km" % initial
+	val_lbl.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	val_lbl.horizontal_alignment = HORIZONTAL_ALIGNMENT_CENTER
+	row.add_child(val_lbl)
+	var btn_plus := Button.new()
+	btn_plus.text = "+"
+	btn_plus.focus_mode = Control.FOCUS_NONE
+	btn_plus.custom_minimum_size = Vector2(28, 0)
+	row.add_child(btn_plus)
+	var state := [initial]  # Array as mutable reference — float is captured by value in GDScript 4
+	btn_minus.pressed.connect(func():
+		state[0] = maxf(state[0] - step, 6371.0 + 100.0)
+		val_lbl.text = "%.0f km" % state[0]
+		on_change.call(state[0]))
+	btn_plus.pressed.connect(func():
+		state[0] += step
+		val_lbl.text = "%.0f km" % state[0]
+		on_change.call(state[0]))
+	return val_lbl
 
 func _set_status(msg: String) -> void:
 	if _status_label:

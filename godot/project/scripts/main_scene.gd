@@ -8,7 +8,28 @@ const VR_ORIGIN_POS := Vector3(0.0, 0.0, 20.0)
 # World-space position of the VR UI panel (right side, arm's reach).
 const VR_PANEL_POS  := Vector3(0.35, 1.5, 19.0)
 
-var _vr_active := false
+var _vr_active  := false
+var _vr_aligned := false
+
+func _process(_delta: float) -> void:
+	if _vr_active and not _vr_aligned:
+		_try_align_xr_to_earth()
+
+func _try_align_xr_to_earth() -> void:
+	var cam := get_node_or_null("XROrigin3D/XRCamera3D")
+	if cam == null or cam.transform == Transform3D.IDENTITY:
+		return
+	var cam_fwd: Vector3 = -cam.global_transform.basis.z
+	cam_fwd.y = 0.0
+	if cam_fwd.length_squared() < 0.001:
+		return
+	var to_earth: Vector3 = (Vector3.ZERO - $XROrigin3D.global_position).normalized()
+	to_earth.y = 0.0
+	if to_earth.length_squared() < 0.001:
+		return
+	$XROrigin3D.rotation.y += cam_fwd.normalized().signed_angle_to(
+		to_earth.normalized(), Vector3.UP)
+	_vr_aligned = true
 
 func _ready() -> void:
 	_vr_active = _try_init_openxr()

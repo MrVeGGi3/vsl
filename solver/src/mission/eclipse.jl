@@ -22,6 +22,35 @@ function in_eclipse(r_eci::Vec3, sun_eci::Vec3)::Bool
 end
 
 """
+    eclipse_periods(positions, times_s, jd_epoch) -> Vector{Tuple{Float64,Float64}}
+
+Returns (t_start_s, t_end_s) pairs for each contiguous eclipse period.
+"""
+function eclipse_periods(
+    positions::Vector{Vec3},
+    times_s::Vector{Float64},
+    jd_epoch::Float64,
+)::Vector{Tuple{Float64,Float64}}
+    periods = Tuple{Float64,Float64}[]
+    in_ecl  = false
+    t_start = 0.0
+    @inbounds for i in eachindex(positions)
+        jd      = jd_epoch + times_s[i] / 86400.0
+        sun_eci = Vec3(sun_position_mod(jd))
+        ecl     = in_eclipse(positions[i], sun_eci)
+        if ecl && !in_ecl
+            t_start = times_s[i]
+            in_ecl  = true
+        elseif !ecl && in_ecl
+            push!(periods, (t_start, times_s[i - 1]))
+            in_ecl = false
+        end
+    end
+    in_ecl && push!(periods, (t_start, times_s[end]))
+    return periods
+end
+
+"""
     eclipse_fraction(positions, times_s, jd_epoch) -> Float64
 
 Fraction of orbit spent in eclipse (0–1).

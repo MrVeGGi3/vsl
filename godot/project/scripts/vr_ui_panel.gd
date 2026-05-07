@@ -19,7 +19,15 @@ func _setup_viewport() -> void:
 	_viewport.transparent_bg = true
 	_viewport.render_target_update_mode = SubViewport.UPDATE_ALWAYS
 	add_child(_viewport)
-	_viewport.add_child(load("res://scenes/analysis_panel.tscn").instantiate())
+	var panel: Control = load("res://scenes/analysis_panel.tscn").instantiate()
+	_viewport.add_child(panel)
+	# Override desktop right-side anchor so panel fills the full SubViewport.
+	# Without this, the panel occupies only x=[310,600] while the quad maps
+	# UV across the full 600px — causing clicks to land on the wrong element.
+	panel.set_anchor_and_offset(SIDE_LEFT,   0.0, 0.0)
+	panel.set_anchor_and_offset(SIDE_RIGHT,  1.0, 0.0)
+	panel.set_anchor_and_offset(SIDE_TOP,    0.0, 0.0)
+	panel.set_anchor_and_offset(SIDE_BOTTOM, 1.0, 0.0)
 
 func _setup_mesh() -> void:
 	var quad := QuadMesh.new()
@@ -54,15 +62,25 @@ func on_ray_select(world_pos: Vector3) -> void:
 	var local_pos := to_local(world_pos)
 	var u := clampf(local_pos.x / PANEL_W_M + 0.5, 0.0, 1.0)
 	var v := clampf(0.5 - local_pos.y / PANEL_H_M, 0.0, 1.0)
+	var pixel := Vector2(u * VP_W, v * VP_H)
+	# Hover first — without this, Button ignores press if cursor wasn't on it
+	var hover := InputEventMouseMotion.new()
+	hover.position = pixel
+	_viewport.push_input(hover, true)
 
 	var press := InputEventMouseButton.new()
 	press.button_index = MOUSE_BUTTON_LEFT
 	press.pressed = true
-	press.position = Vector2(u * VP_W, v * VP_H)
-	_viewport.push_input(press)
+	press.position = pixel
+	_viewport.push_input(press, true)
 
 	var release := InputEventMouseButton.new()
 	release.button_index = MOUSE_BUTTON_LEFT
 	release.pressed = false
-	release.position = Vector2(u * VP_W, v * VP_H)
-	_viewport.push_input(release)
+	release.position = pixel
+	_viewport.push_input(release, true)
+
+	# Move cursor away so no button stays in hover/pressed visual state
+	var move_away := InputEventMouseMotion.new()
+	move_away.position = Vector2(-10.0, -10.0)
+	_viewport.push_input(move_away, true)
