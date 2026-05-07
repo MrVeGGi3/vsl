@@ -2,7 +2,7 @@
 
 [![CI](https://github.com/MrVeGGi3/vsl/actions/workflows/ci.yml/badge.svg)](https://github.com/MrVeGGi3/vsl/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![DOI](https://zenodo.org/badge/1230281538.svg)](https://doi.org/10.5281/zenodo.20059110)
+[![DOI](https://zenodo.org/badge/1230281538.svg)](https://doi.org/10.5281/zenodo.20059111)
 
 An open-source mission analysis environment for early-stage spacecraft design. VSL combines a Julia numerical solver with real-time 3D visualization (LibGodot) and optional immersive VR (OpenXR / Meta Quest via Quest Link), targeting sounding rockets, CubeSats, and smallsats.
 

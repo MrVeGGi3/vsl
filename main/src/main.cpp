@@ -27,12 +27,9 @@ static constexpr const char* ISS_L2 =
 struct JuliaRuntime {
     explicit JuliaRuntime(const char* sysimage) {
         jl_init();
-        // Empty sysimage path = bare Julia (no PackageCompiler — Phase 3)
-        if (std::strlen(sysimage) > 0) {
-            if (vsl_solver_init(sysimage) != 0)
-                std::fprintf(stderr,
-                    "[vsl] WARNING: vsl_solver_init failed — sysimage unavailable\n");
-        }
+        if (vsl_solver_init(sysimage) != 0)
+            std::fprintf(stderr,
+                "[vsl] WARNING: vsl_solver_init failed\n");
     }
     ~JuliaRuntime() {
         vsl_solver_shutdown();
