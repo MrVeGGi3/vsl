@@ -134,10 +134,13 @@ vsl/
 
 | Fase | Semanas | Entrega | Paper |
 |------|---------|---------|-------|
-| 1 | 1–4 | Julia standalone: propagação orbital + plots | Dados validação Paper 1 |
-| 2 | 5–10 | Processo principal C++ + LibGodot + Terra 3D | Arquitetura Paper 1 |
-| 3 | 11–16 | Análise completa: acesso, eclipse, ΔV, relatório | Case study Paper 1 |
-| 4 | 17+ | VR ativo: Quest Link + exploração imersiva | Core Paper 2 (AIAA) |
+| 1 ✓ | 1–4 | Julia standalone: propagação orbital + plots | Dados validação Paper 1 |
+| 2 ✓ | 5–10 | Processo principal C++ + LibGodot + Terra 3D | Arquitetura Paper 1 |
+| 3 ✓ | 11–16 | Análise completa: acesso, eclipse, ΔV, relatório | Case study Paper 1 |
+| 4 ✓ | 17+ | VR ativo: Quest Link + exploração imersiva | Core Paper 2 (AIAA) |
+
+**Paper 1 submetido ao JOSS em 06/05/2026 — em revisão**
+https://joss.theoj.org/papers/0025df1b9f4689d776253ffd37b7cb88
 
 ---
 

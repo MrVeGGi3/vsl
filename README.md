@@ -192,7 +192,9 @@ If you use VSL in your research, please cite:
 }
 ```
 
-**JOSS paper** *(DOI assigned upon acceptance):*
+**JOSS paper** *(under review — DOI assigned upon acceptance):*
+
+Submission: https://joss.theoj.org/papers/0025df1b9f4689d776253ffd37b7cb88
 
 ```bibtex
 @article{vsl2026,

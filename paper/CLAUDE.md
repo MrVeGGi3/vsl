@@ -109,15 +109,21 @@ lock-free para sincronização entre rendering 90Hz e solver numérico.
 
 ---
 
+## Status Paper 1
+
+**Submetido ao JOSS em 06 de maio de 2026**
+Link: https://joss.theoj.org/papers/0025df1b9f4689d776253ffd37b7cb88
+Status: em revisão
+
 ## Checklist JOSS (Paper 1)
 
-- [ ] Repositório público no GitHub com licença MIT
-- [ ] Arquivo paper.md no root (formato JOSS específico)
-- [ ] DOI via Zenodo (release versionado — configurar integração GitHub)
-- [ ] CI passing (GitHub Actions)
-- [ ] README com instruções de instalação
-- [ ] Statement of need claro
-- [ ] Referências a software relacionado (STK, GMAT, Orekit, Poliastro)
+- [x] Repositório público no GitHub com licença MIT
+- [x] Arquivo paper.md no root (formato JOSS específico)
+- [x] DOI via Zenodo (release versionado — configurar integração GitHub)
+- [x] CI passing (GitHub Actions)
+- [x] README com instruções de instalação
+- [x] Statement of need claro
+- [x] Referências a software relacionado (STK, GMAT, Orekit, Poliastro)
 
 ---
 
