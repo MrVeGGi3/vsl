@@ -14,12 +14,6 @@ RUN apt-get update && apt-get install -y \
     ca-certificates \
     build-essential \
     libssl-dev \
-    # Necessário para GLMakie (display virtual em CI)
-    libgl1-mesa-dev \
-    libglu1-mesa-dev \
-    xvfb \
-    # Necessário para SPICE.jl
-    libcspice-dev \
     && rm -rf /var/lib/apt/lists/*
 
 # ── Juliaup + Julia 1.12.5 ───────────────────────────────────────
@@ -54,12 +48,12 @@ COPY . .
 
 # ── Verificação final ─────────────────────────────────────────────
 RUN julia --project=. -e ' \
-    using CUDA; \
-    @info "CUDA functional: $(CUDA.functional())"; \
-    using SatelliteToolboxTle, SatelliteToolboxPropagation; \
+    using SatelliteToolboxTle, SatelliteToolboxPropagators; \
     @info "SatelliteToolbox OK"; \
-    using DifferentialEquations; \
-    @info "DifferentialEquations OK" \
+    using SatelliteToolboxCelestialBodies; \
+    @info "SatelliteToolboxCelestialBodies OK"; \
+    using StaticArrays; \
+    @info "StaticArrays OK" \
     '
 
 CMD ["julia", "--project=.", "--threads=auto"]
