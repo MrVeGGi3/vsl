@@ -14,20 +14,10 @@ All functions:
   - disable GC on the hot path
 """
 
-# Phase 3: load a PackageCompiler sysimage for fast startup.
-# Phase 2: bare Julia — sysimage_path is ignored, packages load from depot.
-Base.@ccallable function vsl_solver_init(sysimage_path::Cstring)::Cint
-    try
-        path = unsafe_string(sysimage_path)
-        if !isempty(path) && isfile(path)
-            # PackageCompiler sysimage loading — implemented in Phase 3
-            @warn "vsl_solver_init: sysimage support not yet implemented" path
-        end
-        return Cint(0)
-    catch e
-        @error "vsl_solver_init failed" exception=e
-        return Cint(-1)
-    end
+# Sysimage loading happens at the C++ level via jl_init_with_image(bindir, path).
+# This function is a health-check entry point called after Julia is already running.
+Base.@ccallable function vsl_solver_init(::Cstring)::Cint
+    return Cint(0)
 end
 
 Base.@ccallable function vsl_solver_shutdown()::Cvoid

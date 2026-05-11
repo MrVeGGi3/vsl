@@ -2,7 +2,7 @@
 
 julia_version = "1.12.6"
 manifest_format = "2.0"
-project_hash = "26b738c5bf83ba5e512346230ebfd85b8686286e"
+project_hash = "0a24f4d1eeb74670fdf7e1ce741b6276b24630d1"
 
 [[deps.ADTypes]]
 git-tree-sha1 = "bbc22a9a08a0ef6460041086d8a7b27940ed4ffd"
@@ -453,6 +453,11 @@ deps = ["Adapt"]
 git-tree-sha1 = "83cf05ab16a73219e5f6bd1bdfa9848fa24ac627"
 uuid = "46192b85-c4d5-4398-a991-12ede77f4527"
 version = "0.2.0"
+
+[[deps.Glob]]
+git-tree-sha1 = "83cb0092e2792b9e3a865b6655e88f5b862607e2"
+uuid = "c27321d9-0574-5035-807b-f59d2c89b15c"
+version = "1.4.0"
 
 [[deps.IntelOpenMP_jll]]
 deps = ["Artifacts", "JLLWrappers", "LazyArtifacts", "Libdl"]
@@ -933,6 +938,12 @@ git-tree-sha1 = "6061884927ecbd67f44d1ea655379ada4e3fdac9"
 uuid = "79d7bb75-1356-48c1-b8c0-6832512096c2"
 version = "2.1.0"
 
+[[deps.PackageCompiler]]
+deps = ["Artifacts", "Glob", "LazyArtifacts", "Libdl", "Pkg", "Printf", "RelocatableFolders", "TOML", "UUIDs", "p7zip_jll"]
+git-tree-sha1 = "5193091a937c1e84cab042d55f8071dd2116c6f2"
+uuid = "9b87118b-4619-50d2-8e1e-99f35a4d4d9d"
+version = "2.3.0"
+
 [[deps.Parsers]]
 deps = ["Dates", "PrecompileTools", "UUIDs"]
 git-tree-sha1 = "5d5e0a78e971354b1c7bff0655d11fdc1b0e12c8"
@@ -1068,6 +1079,12 @@ version = "3.2.0"
     [deps.ReferenceFrameRotations.weakdeps]
     ForwardDiff = "f6369f11-7733-5829-9624-2563aa707210"
     Zygote = "e88e6eb3-aa80-5325-afca-941959d7151f"
+
+[[deps.RelocatableFolders]]
+deps = ["SHA", "Scratch"]
+git-tree-sha1 = "ffdaf70d81cf6ff22c2b6e733c900c3321cab864"
+uuid = "05181044-ff0b-4ac5-8273-598c1e38db00"
+version = "1.0.1"
 
 [[deps.Requires]]
 deps = ["UUIDs"]
@@ -1405,7 +1422,7 @@ uuid = "4ec0a83e-493e-50e2-b9ac-8f72acf5a8f5"
 version = "1.11.0"
 
 [[deps.VSLSolver]]
-deps = ["Dates", "LinearAlgebra", "SatelliteToolboxCelestialBodies", "SatelliteToolboxPropagators", "SatelliteToolboxTle", "StaticArrays"]
+deps = ["Dates", "DifferentialEquations", "Interpolations", "LinearAlgebra", "ReferenceFrameRotations", "SatelliteToolboxAtmosphericModels", "SatelliteToolboxCelestialBodies", "SatelliteToolboxPropagators", "SatelliteToolboxTle", "StaticArrays"]
 path = "."
 uuid = "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
 version = "0.1.0"
