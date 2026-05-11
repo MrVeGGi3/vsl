@@ -13,14 +13,25 @@
 
 // ── Globals ───────────────────────────────────────────────────────────────────
 
-static std::atomic<bool> g_running{true};
-static DoubleBuffer       g_orbit_buffer;
+static std::atomic<bool>      g_running{true};
+static DoubleBuffer            g_orbit_buffer;
+static TrajectoryDoubleBuffer  g_trajectory_buffer;
 
 // ISS reference TLE — replaced by UI input in Phase 3
 static constexpr const char* ISS_L1 =
     "1 25544U 98067A   24001.50000000  .00006000  00000-0  10000-3 0  9992";
 static constexpr const char* ISS_L2 =
     "2 25544  51.6416 247.4627 0006703 130.5360 325.0288 15.49507896 12343";
+
+// Sounding rocket IC — ballistic coast phase (post-burnout, vacuum, vertical).
+// Represents a 30-kg rocket at burnout: 100 m altitude, 500 m/s upward.
+// Quaternion (1,0,0,0) = no rotation from ENU frame; ω = 0.
+static constexpr double ROCKET_X0    =   0.0;   // m ENU east
+static constexpr double ROCKET_Y0    =   0.0;   // m ENU north
+static constexpr double ROCKET_Z0    = 100.0;   // m ENU up (burnout altitude)
+static constexpr double ROCKET_VZ0   = 500.0;   // m/s upward
+static constexpr double ROCKET_MASS  =  30.0;   // kg dry mass
+static constexpr double ROCKET_TEND  = 120.0;   // s — covers coast to apogee (~12.8 km)
 
 // ── RAII — Julia runtime ──────────────────────────────────────────────────────
 
@@ -63,6 +74,30 @@ static void solver_update_orbit() {
         g_orbit_buffer.swap();
     } else {
         std::fprintf(stderr, "[vsl] vsl_propagate_orbit error: %d\n", rc);
+    }
+}
+
+// ── Solver — trajectory ───────────────────────────────────────────────────────
+
+static void solver_update_trajectory() {
+    auto& buf = g_trajectory_buffer.back();
+
+    int rc = vsl_trajectory_sixdof(
+        ROCKET_X0, ROCKET_Y0, ROCKET_Z0,
+        0.0, 0.0, ROCKET_VZ0,          // vx=0, vy=0, vz=500 m/s
+        1.0, 0.0, 0.0, 0.0,            // quaternion — vertical
+        0.0, 0.0, 0.0,                  // zero angular rate
+        ROCKET_MASS, ROCKET_TEND,
+        buf.final_state, &buf.apogee_m
+    );
+
+    if (rc == 0) {
+        buf.valid = 1;
+        buf.frame_id++;
+        g_trajectory_buffer.swap();
+        std::fprintf(stderr, "[vsl] trajectory: apogee %.0f m\n", buf.apogee_m);
+    } else {
+        std::fprintf(stderr, "[vsl] vsl_trajectory_sixdof error: %d\n", rc);
     }
 }
 
@@ -143,6 +178,15 @@ static void write_solver_json(const char* project_path) {
         if (i > 0) std::fputc(',', f);
         std::fprintf(f, "%.3f", (double)pos[i]);
     }
+    std::fprintf(f, "],\n");
+
+    auto& trj = g_trajectory_buffer.front();
+    std::fprintf(f, "  \"trajectory_apogee_m\": %.1f,\n", trj.apogee_m);
+    std::fprintf(f, "  \"trajectory_final_state\": [");
+    for (int i = 0; i < 13; ++i) {
+        if (i > 0) std::fputc(',', f);
+        std::fprintf(f, "%.6f", trj.final_state[i]);
+    }
     std::fprintf(f, "]\n}\n");
 
     std::fclose(f);
@@ -167,8 +211,9 @@ int main(int argc, char* argv[]) {
     // 1. Initialize Julia on main thread
     JuliaRuntime julia{sysimage};
 
-    // 2. Pre-populate orbit buffer and run full analysis before first frame
+    // 2. Pre-populate buffers and run full analysis before first frame
     solver_update_orbit();
+    solver_update_trajectory();
     write_solver_json(project_path);
 
     // 3. Initialize LibGodot
