@@ -1,15 +1,25 @@
 name = "VSLSolver"
 uuid = "a1b2c3d4-e5f6-7890-abcd-ef1234567890"
-authors = ["matheusveras <mveras1897@gmail.com>"]
 version = "0.1.0"
+authors = ["matheusveras <mveras1897@gmail.com>"]
 
 [deps]
 Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
+DifferentialEquations = "0c46a032-eb83-5123-abaf-570d42b7fbaa"
+Interpolations = "a98d9a8b-a2ab-59e6-89dd-64a1c18fca59"
 LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
+ReferenceFrameRotations = "74f56ac7-18b3-5285-802d-d4bd4f104033"
+SatelliteToolboxAtmosphericModels = "5718ef0a-a30f-426d-bcd9-4cf31dd12909"
 SatelliteToolboxCelestialBodies = "b0edd99f-a7ca-4aa6-9a1e-a53e8f506046"
 SatelliteToolboxPropagators = "c2b69894-ea78-4e2b-9ba6-cedbbc3d14d7"
 SatelliteToolboxTle = "7ff27aeb-5fff-4337-a9ee-a9fe6b7ed35e"
 StaticArrays = "90137ffa-7385-5640-81b9-e52037218182"
+
+[compat]
+DifferentialEquations = "8.0.0"
+Interpolations = "0.16.2"
+ReferenceFrameRotations = "3.2.0"
+SatelliteToolboxAtmosphericModels = "1.2.0"
 
 [extras]
 BenchmarkTools = "6e4b80f9-dd63-53aa-95a3-0cdb28fa8baf"

@@ -1,0 +1,173 @@
+6-DOF SOUNDING ROCKET TRAJECTORY — ARCHITECTURE & EQUATIONS
+=============================================================
+
+PURPOSE
+-------
+Standalone solver for the 6-DOF (six degrees of freedom) trajectory of a
+sounding rocket with a hypersonic phase.  Implemented as a DifferentialEquations.jl
+ODEProblem, fully decoupled from the orbital propagation module.
+
+The module will be integrated into the VSL main process (C++ + LibGodot) in a
+future phase once validated.
+
+FILES
+-----
+  solver/src/trajectory/
+    propulsion.jl    — ThrustCurve struct + thrust_at()
+    atmosphere.jl    — AtmosphereState + nrlmsise00_at() wrapper
+    aerodynamics.jl  — AeroTable bilinear + aero_forces()
+    sixdof.jl        — SixDOFCache, SixDOFParams, sixdof!(), sixdof_cache()
+
+  solver/test/trajectory/
+    test_sixdof.jl   — 2 test cases (ballistic analytical, NRLMSISE-00 sanity)
+
+  solver/notes/trajectory/
+    sixdof.txt         (this file)
+    MANUAL_EDIT.txt  — step-by-step guide for manual editing without Claude CLI
+
+
+STATE VECTOR — SVector{13,Float64}
+------------------------------------
+Index  Symbol  Description                       Unit
+  1    x       east position from launch site     m
+  2    y       north position from launch site    m
+  3    z       up position from launch site       m
+  4    vx      east velocity                      m/s
+  5    vy      north velocity                     m/s
+  6    vz      upward velocity                    m/s
+  7    q0      quaternion scalar part             —
+  8    q1      quaternion x component             —
+  9    q2      quaternion y component             —
+ 10    q3      quaternion z component             —
+ 11    p       roll rate  (body x)               rad/s
+ 12    q       pitch rate (body y)               rad/s
+ 13    r       yaw rate   (body z)               rad/s
+
+NOTE: The user originally specified "12 ODEs" but listed 13 states.
+      This implementation uses SVector{13,Float64} to match the physical list.
+
+FRAME CONVENTIONS
+-----------------
+• Inertial frame: ENU (East-North-Up), origin at launch site, z pointing up.
+• Body frame: right-handed, z-axis = rocket long axis pointing toward nose.
+• At launch (identity quaternion): body frame is aligned with ENU.
+• Quaternion q = [q0, q1, q2, q3] represents the rotation from body to ENU.
+  - D = quat_to_dcm(q) is the 3×3 DCM that maps body vectors to ENU vectors.
+  - v_body = D' * v_enu (transpose = inverse for rotation matrices).
+• All forces computed in body frame and rotated to ENU for integration.
+
+EQUATIONS OF MOTION
+--------------------
+
+1. Translational (ENU frame):
+   dr/dt = v
+   m · dv/dt = D · (F_thrust + F_aero)_body + [0, 0, -m·g0]
+
+   where:
+     D            = quat_to_dcm(q)          — body→ENU rotation matrix
+     F_thrust_body = [0, 0, F_thrust]        — thrust along body +z axis
+     F_aero_body   = aero_forces(...)        — aerodynamics in body frame
+     g0            = 9.80665 m/s²            — standard gravity (constant model)
+
+2. Rotational (body frame, Euler rigid-body equations):
+   I · dω/dt = τ − ω × (I·ω)
+
+   where:
+     I   = diagonal inertia tensor (kg·m²)
+     τ   = applied torques (currently zero — no TVC, no fin torque)
+     ω   = [p, q, r] angular velocity in body frame
+
+3. Quaternion kinematics:
+   dq/dt = 0.5 · Ω(ω) · q
+
+   Implemented via ReferenceFrameRotations.dquat(q, ω).
+   The Ω(ω) skew-symmetric matrix is:
+   Ω = [  0  -p  -q  -r ]
+       [  p   0   r  -q ]
+       [  q  -r   0   p ]
+       [  r   q  -p   0 ]
+
+VARIABLE MASS
+-------------
+Mass is NOT an ODE state.  Instead, it is precomputed at each time step by
+ThrustCurve, which stores the vehicle mass as a tabulated function of time
+(trapezoid integration of the mass flow rate, done once at construction).
+
+This design keeps the state vector at 13 elements and avoids the stiff
+mass-depletion term inside the ODE.
+
+Effective specific impulse can be inferred from:
+  Isp = F_thrust / (g0 · mass_flow_rate)   [s]
+
+ATMOSPHERE (NRLMSISE-00)
+-------------------------
+NRLMSISE-00 is a NASA empirical atmospheric model valid from 0 to 1000 km.
+Called via SatelliteToolboxAtmosphericModels.AtmosphericModels.nrlmsise00().
+
+Signature used (no SpaceIndices.init() required):
+  nrlmsise00(instant::DateTime, alt_m, lat_rad, lon_rad, f107A, f107, ap)
+
+Output fields used:
+  .total_density   — kg/m³
+  .temperature     — K
+
+Speed of sound derived from ideal gas:  a = sqrt(γ · R · T)
+  γ = 1.4 (diatomic gas approximation, valid below ~80 km)
+  R = 287.058 J/(kg·K)
+
+Above ~80 km the composition changes (O dominates over N₂), so the speed of
+sound approximation degrades.  For hypersonic analysis above 80 km, this
+implementation is a first approximation — replace with a composition-aware
+calculation when more accuracy is needed.
+
+AERODYNAMICS
+-------------
+AeroTable: bilinear interpolation (Interpolations.jl Gridded(Linear())) over
+  Mach number × angle-of-attack (rad).
+  CD — axial drag coefficient
+  CN — normal force coefficient
+
+Force decomposition in body frame (velocity in xz plane, AoA α from body z):
+  Fx = (-CD·sin α + CN·cos α) · q_dyn · S_ref
+  Fy = 0
+  Fz = (-CD·cos α - CN·sin α) · q_dyn · S_ref
+
+Lookup is allocation-free at runtime (verified by @allocated tests).
+
+ZERO-ALLOCATION GUARANTEE
+--------------------------
+When `use_atmosphere = false` (vacuum / ballistic mode), the `sixdof!` function
+allocates zero heap memory per call.  This is required for embedding in the
+tight integrator inner loop.
+
+Key patterns ensuring zero alloc:
+  • @view u[1:3]  — no-copy slice
+  • Quaternion(q0,q1,q2,q3)  — immutable struct, stack-allocated
+  • quat_to_dcm(q)  — returns SMatrix{3,3} — stack-allocated
+  • dquat(q, ω)  — returns Quaternion — stack-allocated
+  • SMatrix * SVector  — stack-allocated result
+  • SixDOFCache (MVector) — pre-allocated, passed via SixDOFParams
+
+INTEGRATION WITH DifferentialEquations.jl
+-------------------------------------------
+Recommended integrators for sounding rocket (non-stiff phase):
+  Tsit5()    — fast, 4th/5th order Runge-Kutta (good for smooth trajectories)
+  Vern9()    — 9th order, very accurate (use for validation)
+  DPRKN6()   — Runge-Kutta-Nyström (specialized for 2nd-order Newton systems)
+
+Example:
+  prob = ODEProblem(sixdof!, u0, (0.0, t_apogee), params)
+  sol  = solve(prob, Tsit5(); reltol=1e-8, abstol=1e-8)
+
+For stiff re-entry / dense atmosphere phases:
+  FBDF()  or  QNDF()  (variable-order BDF methods)
+
+FUTURE INTEGRATION INTO VSL MAIN PROCESS
+-----------------------------------------
+1. Build VSLSolver with PackageCompiler.jl → libvsl_solver.so
+2. In main.cpp, call:
+     vsl_trajectory_sixdof(u0, tspan, params_json, out_positions, out_count)
+   This C function wraps the Julia solve() call.
+3. The lock-free double-buffer (see CLAUDE.md §2) streams results to Godot.
+4. Visualization: trajectory colored by phase (boost / coast / re-entry),
+   same pipeline as the orbital trajectory viewer.

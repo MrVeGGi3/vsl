@@ -1,0 +1,175 @@
+MANUAL EDIT SEQUENCE — 6-DOF TRAJECTORY MODULE
+================================================
+(Use this guide if Claude CLI is not available)
+
+
+PREREQUISITES
+-------------
+• Julia 1.12+ installed via Juliaup
+• General registry added: julia -e 'using Pkg; Pkg.Registry.add("General")'
+• Working directory: vsl/solver/  (all relative paths below are from here)
+
+
+STEP 1 — Create branch
+-----------------------
+  git checkout main
+  git checkout -b sounding-rocket
+
+
+STEP 2 — Add dependencies to Project.toml
+------------------------------------------
+Open solver/Project.toml and add to [deps]:
+
+  DifferentialEquations           = "0c46a032-eb83-5123-abaf-570d42b7fbaa"
+  Interpolations                  = "a98d9a8b-a2ab-59e6-89dd-64a1c18fca59"
+  ReferenceFrameRotations         = "74f56ac7-18b3-5285-802d-d4bd4f104033"
+  SatelliteToolboxAtmosphericModels = "5718ef0a-a30f-426d-bcd9-4cf31dd12909"
+
+Keep all existing [deps] entries.  Do NOT add these to [extras].
+
+
+STEP 3 — Install packages and regenerate Manifest
+--------------------------------------------------
+Run from the vsl/solver/ directory:
+
+  julia --project=. -e '
+    using Pkg
+    Pkg.add(["DifferentialEquations", "Interpolations",
+             "ReferenceFrameRotations", "SatelliteToolboxAtmosphericModels"])
+    Pkg.resolve()
+    println("Done")
+  '
+
+This updates Manifest.toml automatically.
+Commit BOTH Project.toml and Manifest.toml.
+
+
+STEP 4 — Create directory structure
+------------------------------------
+  mkdir -p src/trajectory
+  mkdir -p test/trajectory
+  mkdir -p notes/trajectory
+
+
+STEP 5 — Create source files (in order — each depends on the previous)
+------------------------------------------------------------------------
+
+5a. src/trajectory/propulsion.jl
+    Structs:  ThrustCurve
+    Functions: ThrustCurve(times, thrusts, mass_flow, m0, m_dry) [constructor]
+               thrust_at(tc, t) → (F_N, mass_kg)
+
+    Key design: mass vector is PRECOMPUTED in the constructor (trapezoid integral
+    of mass_flow), so thrust_at is allocation-free at runtime.
+
+5b. src/trajectory/atmosphere.jl
+    Structs:  AtmosphereState(density, temperature, pressure, speed_of_sound)
+    Functions: nrlmsise00_at(alt_m, lat_deg, lon_deg, jd; f107A, f107, ap)
+
+    API note: use the 7-argument form of nrlmsise00 (no SpaceIndices.init needed):
+      nrlmsise00(instant::DateTime, alt_m, lat_rad, lon_rad, f107A, f107, ap)
+    Convert JD → DateTime via julian2datetime(jd) from SatelliteToolboxAtmosphericModels.
+
+5c. src/trajectory/aerodynamics.jl
+    Structs:  AeroTable{IT}  (IT = Interpolations type parameter)
+    Functions: AeroTable(mach, aoa_rad, CD, CN)  [constructor]
+               aero_forces(table, mach, aoa_rad, q_Pa, S_ref_m2) → SVector{3,Float64}
+
+    Use Gridded(Linear()) interpolation — zero alloc at query time.
+
+5d. src/trajectory/sixdof.jl
+    Structs:  SixDOFCache, SixDOFParams
+    Functions: sixdof_cache()
+               sixdof!(du, u, p::SixDOFParams, t) — DifferentialEquations.jl interface
+
+    State vector: 13 elements [x,y,z,vx,vy,vz,q0,q1,q2,q3,p,q,r]
+    Frames: ENU inertial, body (z = nose direction)
+    Variable mass: read from ThrustCurve, NOT integrated as ODE state.
+    Set p.use_atmosphere = false for zero-alloc vacuum path.
+
+
+STEP 6 — Update src/VSLSolver.jl
+----------------------------------
+After the existing include() block, add:
+
+  # 6-DOF sounding rocket trajectory
+  include("trajectory/propulsion.jl")
+  include("trajectory/atmosphere.jl")
+  include("trajectory/aerodynamics.jl")
+  include("trajectory/sixdof.jl")
+
+Add to the export list:
+  export ThrustCurve, thrust_at
+  export AtmosphereState, nrlmsise00_at
+  export AeroTable, aero_forces
+  export SixDOFCache, SixDOFParams, sixdof!, sixdof_cache
+
+
+STEP 7 — Create test file
+--------------------------
+Create test/trajectory/test_sixdof.jl with two test sets:
+
+  @testset "6DOF ballistic (vacuum) — analytical solution"
+    - Build SixDOFParams with use_atmosphere=false, zero thrust, zero drag
+    - Verify @allocated sixdof!(du, u, p, 0.0) == 0
+    - Integrate 20 s with Tsit5()
+    - Compare z(t) against z(t) = vz0·t - 0.5·g·t² with tolerance 1 m
+    - Verify quaternion norm stays at 1.0 within 1e-6
+
+  @testset "6DOF NRLMSISE-00 atmosphere — density sanity"
+    - Call nrlmsise00_at at several altitudes (0, 10k, 30k, 80k, 200k m)
+    - Verify density decreases monotonically
+    - Check sea-level density 0.9–1.4 kg/m³
+    - Integrate 60 s starting at 80 km, verify object falls
+
+
+STEP 8 — Update test/runtests.jl
+----------------------------------
+Add inside the @testset "VSLSolver" block:
+  include("trajectory/test_sixdof.jl")
+
+
+STEP 9 — Run tests
+-------------------
+  julia --project=. -e "using Pkg; Pkg.test()"
+
+Expected: all 34 existing tests pass + new trajectory tests pass.
+If tests fail:
+  • "UndefVarError: SixDOFParams" → VSLSolver.jl include order wrong
+  • "allocs != 0" → check for accidental allocation in sixdof! vacuum path
+  • NRLMSISE-00 error → check SpaceIndices.init() not needed (use 7-arg form)
+
+
+STEP 10 — Commit
+-----------------
+  git add solver/Project.toml solver/Manifest.toml
+  git add solver/src/trajectory/ solver/src/VSLSolver.jl
+  git add solver/test/trajectory/ solver/test/runtests.jl
+  git add solver/notes/trajectory/
+  git commit -m "feat(trajectory): add 6DOF sounding rocket trajectory module"
+
+
+IMPORTANT API NOTES
+--------------------
+
+nrlmsise00 (SatelliteToolboxAtmosphericModels v1.2):
+  - Altitude parameter is in METRES (not km)
+  - Latitude/longitude are in RADIANS (not degrees) for the 7-arg form
+  - Output field: .total_density (kg/m³), .temperature (K)
+  - Do NOT call with keyword args like instant=, alt=, g_lat= — use positional args
+
+ReferenceFrameRotations v3.2:
+  - Quaternion(q0, q1, q2, q3) — scalar-first convention
+  - quat_to_dcm(q) → DCM (SMatrix{3,3}) — maps body → ENU
+  - dquat(q, ω) → Quaternion — quaternion kinematic derivative
+  - Both are zero-alloc
+
+Interpolations.jl v0.16 (Gridded bilinear):
+  - itp = interpolate((x_knots, y_knots), data, Gridded(Linear()))
+  - itp(x, y) is zero-alloc at query time
+  - x_knots and y_knots must be strictly increasing
+
+DifferentialEquations.jl in-place form:
+  - function f!(du, u, p, t) — mutates du, returns nothing
+  - u is a Vector{Float64} of length 13
+  - du is a Vector{Float64} of length 13 (pre-allocated by DiffEq solver)
