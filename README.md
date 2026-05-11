@@ -74,7 +74,16 @@ juliaup add 1.12
 juliaup default 1.12
 ```
 
-**3. Instantiate the solver**
+**3. Add the Julia General registry** *(once per Julia installation)*
+
+On a fresh install, Julia has no registries and `Pkg.instantiate()` will fail.
+Run this once before installing any packages:
+
+```bash
+julia -e 'using Pkg; Pkg.Registry.add("General")'
+```
+
+**4. Instantiate the solver**
 
 ```bash
 cd solver
@@ -82,7 +91,7 @@ julia --project=. -e "using Pkg; Pkg.instantiate()"
 cd ..
 ```
 
-**4. Build the C++ main process** *(requires LibGodot 4.6 compiled as shared library)*
+**5. Build the C++ main process** *(requires LibGodot 4.6 compiled as shared library)*
 
 ```bash
 cd main
