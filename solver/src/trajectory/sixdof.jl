@@ -31,12 +31,14 @@ All parameters consumed by `sixdof!`.
 Set `use_atmosphere = false` for ballistic (vacuum) simulations — NRLMSISE-00
 is skipped entirely, guaranteeing a zero-allocation ODE right-hand side.
 """
-struct SixDOFParams
+struct SixDOFParams{IT}
     thrust_curve::ThrustCurve
-    aero_table::AeroTable
+    aero_table::AeroTable{IT}
     I_body::SMatrix{3,3,Float64,9}      # inertia tensor, body frame (kg·m²)
     I_body_inv::SMatrix{3,3,Float64,9}  # precomputed inverse
     S_ref::Float64                       # reference area (m²)
+    xcp::Float64                         # center of pressure from nose (m, positive toward tail)
+    xcg::Float64                         # center of gravity from nose (m, positive toward tail)
     jd_epoch::Float64                    # Julian Date at t=0
     lat0_deg::Float64                    # launch site latitude  (deg)
     lon0_deg::Float64                    # launch site longitude (deg)
@@ -72,7 +74,8 @@ Forces (ENU frame):
   F_total = D · (F_thrust_body + F_aero_body) + [0, 0, −mg]
 
 Rotation (body frame, Euler rigid-body equations):
-  I · dω/dt = τ − ω × (I·ω)       (τ = 0 in current implementation)
+  I · dω/dt = τ − ω × (I·ω)
+  τ = aerodynamic pitch/yaw restoring moment when use_atmosphere=true, else 0
 
 Quaternion kinematics:
   dq/dt = 0.5 · Ω(ω_body) · q      (via `dquat` from ReferenceFrameRotations)
@@ -92,6 +95,7 @@ function sixdof!(du, u, p::SixDOFParams, t::Float64)
     F_thrust, m = thrust_at(p.thrust_curve, t)
 
     # ── Aerodynamic + atmospheric forces ────────────────────────────────────
+    τ_aero_y = 0.0  # pitch/yaw restoring torque (body y-axis); 0 in vacuum
     F_aero_body = if p.use_atmosphere
         alt_m   = r[3] + p.launch_alt_m
         lat_deg = p.lat0_deg + r[2] / 111_320.0
@@ -105,10 +109,15 @@ function sixdof!(du, u, p::SixDOFParams, t::Float64)
         aoa_rad = (v_mag < 1.0) ? 0.0 :
                   acos(clamp(v_body[3] / v_mag, -1.0, 1.0))
         q_dyn   = 0.5 * atm.density * v_mag^2
+        mach_c  = clamp(mach,    p.aero_table.mach_grid[1], p.aero_table.mach_grid[end])
+        aoa_c   = clamp(aoa_rad, p.aero_table.aoa_grid[1],  p.aero_table.aoa_grid[end])
+        # Pitch/yaw restoring moment: τ_y = CN·q·S·(xcg−xcp); stable when xcp > xcg
+        τ_aero_y = p.aero_table._itp_CN(mach_c, aoa_c) * (p.xcg - p.xcp) * q_dyn * p.S_ref
         aero_forces(p.aero_table, mach, aoa_rad, q_dyn, p.S_ref)
     else
         SVector(0.0, 0.0, 0.0)
     end
+    τ_aero = SVector(0.0, τ_aero_y, 0.0)
 
     # ── Total body-frame force (thrust along body +z axis) ──────────────────
     F_body_total = SVector(F_aero_body[1],
@@ -131,7 +140,7 @@ function sixdof!(du, u, p::SixDOFParams, t::Float64)
     # ── Rotational EOM (Euler) ───────────────────────────────────────────────
     ω_svec = SVector(ω[1], ω[2], ω[3])
     Iω     = p.I_body * ω_svec
-    dω_svec = p.I_body_inv * (-cross(ω_svec, Iω))  # τ=0
+    dω_svec = p.I_body_inv * (τ_aero - cross(ω_svec, Iω))
 
     @inbounds begin
         du[11] = dω_svec[1]
