@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# VSL — Verificação de Dependências do Ambiente
+# VSL — Verificação de Pré-requisitos do Host
 # Execute: chmod +x check_env.sh && ./check_env.sh
+# Julia, CMake, Ninja, LaTeX e outros são gerenciados pelo Docker — não verificados aqui.
 
 BOLD='\033[1m'
 GREEN='\033[0;32m'
@@ -15,27 +16,12 @@ missing() { echo -e "  ${RED}✗${RESET} $1${DIM}$2${RESET}"; }
 warn()    { echo -e "  ${YELLOW}~${RESET} $1${DIM}$2${RESET}"; }
 section() { echo -e "\n${BOLD}${CYAN}$1${RESET}"; }
 
-check_cmd() {
-    local name="$1" cmd="$2" version_flag="${3:---version}"
-    if command -v "$cmd" &>/dev/null; then
-        local ver
-        ver=$("$cmd" $version_flag 2>&1 | head -1 | sed 's/[^0-9.]//g' | head -c 20)
-        ok "$name" "  ($ver)"
-        return 0
-    else
-        missing "$name" "  → não encontrado"
-        return 1
-    fi
-}
-
 check_version() {
-    # check_version "Nome" "cmd" "versão mínima" "flag"
     local name="$1" cmd="$2" min="$3" flag="${4:---version}"
     if command -v "$cmd" &>/dev/null; then
         local ver
         ver=$("$cmd" $flag 2>&1 | grep -oP '\d+\.\d+[\.\d]*' | head -1)
         if [[ -n "$ver" ]]; then
-            # Comparação simples de versão (major.minor)
             local cur_maj cur_min min_maj min_min
             cur_maj=$(echo "$ver" | cut -d. -f1)
             cur_min=$(echo "$ver" | cut -d. -f2)
@@ -57,30 +43,9 @@ check_version() {
 }
 
 echo -e "${BOLD}╔══════════════════════════════════════════╗${RESET}"
-echo -e "${BOLD}║   VSL — Verificação de Dependências      ║${RESET}"
+echo -e "${BOLD}║   VSL — Pré-requisitos do Host           ║${RESET}"
 echo -e "${BOLD}╚══════════════════════════════════════════╝${RESET}"
-
-# ── Sistema ──────────────────────────────────────────────────────
-section "Sistema"
-if [[ -f /etc/os-release ]]; then
-    . /etc/os-release
-    ok "Linux" "  ($PRETTY_NAME)"
-else
-    warn "Linux" "  (distro não detectada)"
-fi
-
-ARCH=$(uname -m)
-ok "Arquitetura" "  ($ARCH)"
-
-CPU_CORES=$(nproc)
-ok "CPU cores" "  ($CPU_CORES cores disponíveis)"
-
-RAM_GB=$(awk '/MemTotal/ {printf "%.0f", $2/1024/1024}' /proc/meminfo)
-if (( RAM_GB >= 16 )); then
-    ok "RAM" "  (${RAM_GB}GB)"
-else
-    warn "RAM" "  (${RAM_GB}GB — recomendado ≥ 16GB para Julia + Godot)"
-fi
+echo -e "${DIM}  Build tools (Julia, CMake, LaTeX…) rodam no Docker.${RESET}"
 
 # ── GPU NVIDIA ────────────────────────────────────────────────────
 section "GPU NVIDIA"
@@ -99,91 +64,7 @@ if command -v nvcc &>/dev/null; then
     CUDA_VER=$(nvcc --version 2>&1 | grep -oP 'release \K[\d.]+')
     ok "CUDA toolkit (nvcc)" "  ($CUDA_VER)"
 else
-    warn "CUDA toolkit (nvcc)" "  → nvcc não encontrado (CUDA.jl pode ainda funcionar sem ele)"
-fi
-
-# ── Terminal & Shell ──────────────────────────────────────────────
-section "Terminal & Shell"
-check_cmd "WezTerm"  "wezterm"
-check_cmd "Fish"     "fish"
-check_cmd "Zsh"      "zsh"
-check_cmd "Starship" "starship"
-check_cmd "tmux"     "tmux"     # alternativa ao multiplexer do WezTerm
-
-# ── Linguagens & Runtimes ─────────────────────────────────────────
-section "Linguagens & Runtimes"
-check_version "Julia"   "julia"  "1.10"
-check_cmd     "Juliaup" "juliaup"
-
-check_version "Node.js" "node"   "18.0"
-check_cmd     "npm"     "npm"
-check_version "Python"  "python3" "3.10"
-
-# ── Editor ────────────────────────────────────────────────────────
-section "Editor"
-if command -v code &>/dev/null; then
-    CODE_VER=$(code --version 2>/dev/null | head -1)
-    ok "VSCode" "  ($CODE_VER)"
-
-    echo -e "  ${DIM}Verificando extensões instaladas...${RESET}"
-    EXTENSIONS=$(code --list-extensions 2>/dev/null)
-
-    check_ext() {
-        local id="$1" name="$2"
-        if echo "$EXTENSIONS" | grep -qi "$id"; then
-            ok "  ext: $name"
-        else
-            missing "  ext: $name" "  → code --install-extension $id"
-        fi
-    }
-
-    check_ext "julialang.language-julia"              "Julia"
-    check_ext "geequlim.godot-tools"                  "Godot Tools"
-    check_ext "james-yu.latex-workshop"               "LaTeX Workshop"
-    check_ext "llvm-vs-code-extensions.vscode-clangd" "clangd (C++)"
-    check_ext "ms-azuretools.vscode-docker"           "Docker"
-    check_ext "eamodio.gitlens"                       "GitLens"
-    check_ext "usernamehw.errorlens"                  "Error Lens"
-else
-    missing "VSCode" "  → não encontrado"
-fi
-
-# ── Godot ─────────────────────────────────────────────────────────
-section "Godot"
-GODOT_FOUND=false
-for cmd in godot4 godot "godot_editor"; do
-    if command -v "$cmd" &>/dev/null; then
-        GODOT_VER=$("$cmd" --version 2>/dev/null | head -1)
-        ok "Godot" "  ($GODOT_VER) → comando: $cmd"
-        # Verifica se é 4.6+
-        MAJ=$(echo "$GODOT_VER" | cut -d. -f1)
-        MIN=$(echo "$GODOT_VER" | cut -d. -f2)
-        if (( MAJ >= 4 && MIN >= 6 )); then
-            ok "Godot versão" "  (≥ 4.6 — LibGodot disponível ✓)"
-        else
-            warn "Godot versão" "  (< 4.6 — LibGodot não disponível, atualizar recomendado)"
-        fi
-        GODOT_FOUND=true
-        break
-    fi
-done
-$GODOT_FOUND || missing "Godot" "  → não encontrado (baixar 4.6.2)"
-
-# ── Build tools C++ ───────────────────────────────────────────────
-section "Build Tools C++"
-check_cmd     "CMake"   "cmake"   "--version"
-check_version "CMake"   "cmake"   "3.25"        "--version"
-check_cmd     "Ninja"   "ninja"   "--version"
-check_cmd     "clangd"  "clangd"  "--version"
-check_cmd     "clang++" "clang++" "--version"
-check_cmd     "g++"     "g++"     "--version"
-check_cmd     "pkg-config" "pkg-config"
-
-# Vulkan
-if command -v vulkaninfo &>/dev/null; then
-    ok "Vulkan tools" "  (vulkaninfo disponível)"
-else
-    warn "Vulkan tools" "  → instalar: vulkan-tools"
+    warn "CUDA toolkit (nvcc)" "  → nvcc não encontrado (CUDA.jl usa o driver diretamente)"
 fi
 
 # ── Docker ────────────────────────────────────────────────────────
@@ -192,21 +73,18 @@ if command -v docker &>/dev/null; then
     DOCKER_VER=$(docker --version | grep -oP '[\d.]+' | head -1)
     ok "Docker" "  ($DOCKER_VER)"
 
-    # Verifica se usuário está no grupo docker
     if groups | grep -q docker; then
         ok "Grupo docker" "  (usuário no grupo — sem sudo necessário)"
     else
-        warn "Grupo docker" "  → adicionar: sudo usermod -aG docker \$USER"
+        warn "Grupo docker" "  → sudo usermod -aG docker \$USER && newgrp docker"
     fi
 
-    # Verifica se daemon está rodando
     if docker info &>/dev/null; then
         ok "Docker daemon" "  (rodando)"
     else
-        warn "Docker daemon" "  → iniciar: sudo systemctl start docker"
+        warn "Docker daemon" "  → sudo systemctl start docker"
     fi
 
-    # NVIDIA Container Toolkit
     if docker info 2>/dev/null | grep -q "nvidia"; then
         ok "NVIDIA Container Toolkit" "  (configurado)"
     elif command -v nvidia-ctk &>/dev/null; then
@@ -214,27 +92,11 @@ if command -v docker &>/dev/null; then
         echo -e "     ${DIM}→ sudo nvidia-ctk runtime configure --runtime=docker${RESET}"
         echo -e "     ${DIM}→ sudo systemctl restart docker${RESET}"
     else
-        missing "NVIDIA Container Toolkit" "  → necessário para CUDA.jl no Docker"
+        missing "NVIDIA Container Toolkit" "  → necessário para GPU nos containers (CUDA.jl)"
+        echo -e "     ${DIM}→ https://docs.nvidia.com/datacenter/cloud-native/container-toolkit${RESET}"
     fi
 else
     missing "Docker" "  → não encontrado"
-fi
-
-# ── Claude Code CLI ───────────────────────────────────────────────
-section "Claude Code CLI"
-check_cmd "Claude Code" "claude"
-
-# ── LaTeX ─────────────────────────────────────────────────────────
-section "LaTeX"
-if command -v latexmk &>/dev/null; then
-    ok "latexmk" ""
-    # Verifica instalação TeX Live
-    if command -v tlmgr &>/dev/null; then
-        TEXLIVE_VER=$(tlmgr --version 2>/dev/null | grep -oP '\d{4}' | head -1)
-        ok "TeX Live" "  ($TEXLIVE_VER)"
-    fi
-else
-    warn "LaTeX local" "  → não encontrado (OK se usar só via Docker)"
 fi
 
 # ── Git ───────────────────────────────────────────────────────────
@@ -248,17 +110,70 @@ if command -v git &>/dev/null; then
     else
         warn "Git user" "  → git config --global user.name 'Seu Nome'"
     fi
-    # Verifica se há chave SSH configurada
     if [[ -f ~/.ssh/id_ed25519.pub ]] || [[ -f ~/.ssh/id_rsa.pub ]]; then
         ok "SSH key" "  (encontrada)"
     else
-        warn "SSH key" "  → ssh-keygen -t ed25519 (para GitHub)"
+        warn "SSH key" "  → ssh-keygen -t ed25519 -C 'email@exemplo.com'"
     fi
 fi
 
-# ── Resumo ────────────────────────────────────────────────────────
+# ── Godot editor ─────────────────────────────────────────────────
+section "Godot editor (edição local de cenas .tscn)"
+GODOT_FOUND=false
+for cmd in godot4 godot "godot_editor"; do
+    if command -v "$cmd" &>/dev/null; then
+        GODOT_VER=$("$cmd" --version 2>/dev/null | head -1)
+        ok "Godot" "  ($GODOT_VER) → comando: $cmd"
+        MAJ=$(echo "$GODOT_VER" | cut -d. -f1)
+        MIN=$(echo "$GODOT_VER" | cut -d. -f2)
+        if (( MAJ >= 4 && MIN >= 6 )); then
+            ok "Godot versão" "  (≥ 4.6 — LibGodot disponível ✓)"
+        else
+            warn "Godot versão" "  (< 4.6 — LibGodot requer ≥ 4.6, atualizar)"
+        fi
+        GODOT_FOUND=true
+        break
+    fi
+done
+$GODOT_FOUND || missing "Godot" "  → não encontrado (baixar 4.6.2 em godotengine.org)"
+
+# ── VS Codium ─────────────────────────────────────────────────────
+section "VS Codium"
+if command -v codium &>/dev/null; then
+    CODIUM_VER=$(codium --version 2>/dev/null | head -1)
+    ok "VS Codium" "  ($CODIUM_VER)"
+
+    echo -e "  ${DIM}Verificando extensões (Open-VSX)...${RESET}"
+    EXTENSIONS=$(codium --list-extensions 2>/dev/null)
+
+    check_ext() {
+        local id="$1" name="$2"
+        if echo "$EXTENSIONS" | grep -qi "$id"; then
+            ok "  ext: $name"
+        else
+            missing "  ext: $name" "  → codium --install-extension $id"
+        fi
+    }
+
+    check_ext "julialang.language-julia"               "Julia"
+    check_ext "geequlim.godot-tools"                   "Godot Tools"
+    check_ext "james-yu.latex-workshop"                "LaTeX Workshop"
+    check_ext "llvm-vs-code-extensions.vscode-clangd"  "clangd (C++)"
+    check_ext "eamodio.gitlens"                        "GitLens"
+    check_ext "usernamehw.errorlens"                   "Error Lens"
+else
+    missing "VS Codium" "  → não encontrado (vscodium.com)"
+fi
+
+# ── Claude Code CLI ───────────────────────────────────────────────
+section "Claude Code CLI"
+if command -v claude &>/dev/null; then
+    CLAUDE_VER=$(claude --version 2>/dev/null | head -1)
+    ok "Claude Code" "  ($CLAUDE_VER)"
+else
+    missing "Claude Code" "  → npm install -g @anthropic-ai/claude-code"
+fi
+
 echo -e "\n${BOLD}╔══════════════════════════════════════════╗${RESET}"
-echo -e "${BOLD}║   Próximos passos sugeridos               ║${RESET}"
-echo -e "${BOLD}╚══════════════════════════════════════════╝${RESET}"
-echo -e "${DIM}Execute este script e compartilhe o output"
-echo -e "para receber instruções personalizadas de instalação.${RESET}\n"
+echo -e "${BOLD}║  Pronto! Use docker compose up para build ║${RESET}"
+echo -e "${BOLD}╚══════════════════════════════════════════╝${RESET}\n"

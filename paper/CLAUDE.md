@@ -45,10 +45,10 @@ TeX Live (instalado localmente)
 
 ---
 
-## Workflow Overleaf ↔ VSCode
+## Workflow Overleaf ↔ VS Codium
 
 ```
-1. Editar .tex no VSCode (LaTeX Workshop — preview ao vivo)
+1. Editar .tex no VS Codium (LaTeX Workshop — preview ao vivo)
 2. git commit + push
 3. Overleaf sincroniza automaticamente (~30 segundos)
 ```

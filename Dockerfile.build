@@ -1,18 +1,14 @@
 # VSL Build — Processo Principal C++ + LibGodot
 # Compila o vsl_main que orquestra libgodot + libjulia
-# Usado por: vsl-build
-
 FROM ubuntu:22.04
 
 # ── Evitar prompts interativos ────────────────────────────────────
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=UTC
 
-# ── Dependências de build ─────────────────────────────────────────
-RUN apt-get update && apt-get install -y \
-    # Build essentials
+# ── Dependências de build (CMake NÃO incluso aqui) ────────────────
+RUN apt-get update && apt-get install -y --no-install-recommends \
     build-essential \
-    cmake \
     ninja-build \
     clang \
     clangd \
@@ -20,6 +16,7 @@ RUN apt-get update && apt-get install -y \
     git \
     curl \
     wget \
+    ca-certificates \
     # Godot / LibGodot dependências
     libvulkan-dev \
     vulkan-tools \
@@ -34,13 +31,21 @@ RUN apt-get update && apt-get install -y \
     libpulse-dev \
     libudev-dev \
     libdbus-1-dev \
-    # OpenXR
     libopenxr-dev \
     # Python para SCons (build system do Godot)
     python3 \
     python3-pip \
     scons \
+    && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
+
+# ── Instalação Manual do CMake 3.28.3 (Para corrigir o erro) ──────
+# Removemos o cmake do apt e instalamos o binário oficial da Kitware
+RUN wget https://github.com/Kitware/CMake/releases/download/v3.28.3/cmake-3.28.3-linux-x86_64.sh \
+    -q -O /tmp/cmake-install.sh \
+    && chmod +x /tmp/cmake-install.sh \
+    && ./tmp/cmake-install.sh --prefix=/usr/local --skip-license \
+    && rm /tmp/cmake-install.sh
 
 # ── Juliaup para ter acesso ao libjulia ───────────────────────────
 RUN curl -fsSL https://install.julialang.org | sh -s -- \
@@ -50,7 +55,6 @@ RUN curl -fsSL https://install.julialang.org | sh -s -- \
 ENV PATH="/root/.juliaup/bin:$PATH"
 
 # ── Godot 4.6.2 source (para LibGodot) ───────────────────────────
-# LibGodot requer compilar o Godot como biblioteca a partir do source
 ARG GODOT_VERSION=4.6.2
 ARG GODOT_TAG=${GODOT_VERSION}-stable
 
@@ -59,8 +63,7 @@ RUN git clone --depth=1 \
     https://github.com/godotengine/godot.git \
     /opt/godot-source
 
-# Compila LibGodot (pode demorar ~20min na primeira vez)
-# target=template_release produz libgodot.so otimizada
+# Compila LibGodot (usa nproc para aproveitar os 28 cores da sua CPU)
 RUN cd /opt/godot-source && \
     scons \
       platform=linuxbsd \
@@ -70,13 +73,13 @@ RUN cd /opt/godot-source && \
       optimize=speed \
       use_llvm=yes \
       -j$(nproc) && \
-    # Copia a biblioteca para local acessível
     cp bin/libgodot*.so /usr/local/lib/ && \
     ldconfig && \
-    echo "✓ LibGodot compilada"
+    echo "✓ LibGodot compilada com sucesso"
 
 # Copia headers do Godot para o include path
-RUN cp -r /opt/godot-source/core/extension /usr/local/include/godot/
+RUN mkdir -p /usr/local/include/godot && \
+    cp -r /opt/godot-source/core/extension /usr/local/include/godot/
 
 # ── Variáveis de ambiente para o build do VSL ────────────────────
 ENV GODOT_SOURCE=/opt/godot-source
@@ -85,4 +88,5 @@ ENV JULIA_PATH=/root/.juliaup/bin
 
 WORKDIR /workspace
 
+# O comando de build real agora é gerenciado pelo docker-compose.yml
 CMD ["bash"]

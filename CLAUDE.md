@@ -22,6 +22,7 @@ ANSYS e RPA — voltado inicialmente para análise de missão orbital.
 | Julia | 1.12.5 via Juliaup | ✓ |
 | Godot | 4.6.2 stable | ✓ |
 | Docker | 29.4.2 + NVIDIA Container Toolkit | ✓ |
+| VS Codium | latest stable | ✓ |
 | Claude Code | 2.1.128 | ✓ |
 | Shell | bash + Starship 1.25.1 | ✓ |
 
@@ -90,7 +91,7 @@ Abrir Claude Code a partir do subdiretório correto para contexto específico.
 vsl/
 ├── CLAUDE.md                  ← este arquivo (contexto global)
 ├── SETUP.md                   ← guia de instalação do ambiente
-├── check_env.sh               ← verificação de dependências
+├── check_env.sh               ← verificação de pré-requisitos do host
 ├── docker-compose.yml
 ├── .github/workflows/
 ├── main/                      ← processo principal C++ (LibGodot + libjulia)

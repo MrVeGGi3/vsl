@@ -1,19 +1,5 @@
-version: '3.9'
-
-# VSL — Virtual Simulation Lab
+# ─── VSL — Virtual Simulation Lab ─────────────────────────────────
 # Pop!_OS 24.04 · RTX 4060 · CUDA 13.0 (driver) / 12.0 (nvcc)
-#
-# Containers:
-#   julia-solver   — desenvolvimento e testes do solver Julia
-#   pluto          — notebooks de validação (→ paper)
-#   vsl-build      — compila processo principal C++ + LibGodot
-#   latex-paper    — compila o paper LaTeX
-#
-# Uso rápido:
-#   docker compose run --rm julia-solver   → REPL Julia
-#   docker compose up pluto                → localhost:1234
-#   docker compose run --rm vsl-build      → compila tudo
-#   docker compose run --rm latex-paper    → gera PDF
 
 services:
 
@@ -28,13 +14,13 @@ services:
     environment:
       - NVIDIA_VISIBLE_DEVICES=all
       - NVIDIA_DRIVER_CAPABILITIES=compute,utility
-      - JULIA_NUM_THREADS=auto          # usa todos os 28 cores
-      - JULIA_CUDA_SOFT_MEMORY_LIMIT=6GiB  # deixa 2GB para Godot/OS
+      - JULIA_NUM_THREADS=auto
+      - JULIA_CUDA_SOFT_MEMORY_LIMIT=6GiB
       - JULIA_DEPOT_PATH=/root/.julia
     volumes:
-      - ./solver:/workspace/solver      # hot reload do código
-      - ./paper/figures:/workspace/paper/figures  # figuras → paper
-      - julia-depot:/root/.julia        # cache de pacotes persistente
+      - ./solver:/workspace/solver
+      - ./paper/figures:/workspace/paper/figures
+      - julia-depot:/root/.julia
     working_dir: /workspace/solver
     command: julia --project=. --threads=auto
     stdin_open: true
@@ -71,21 +57,21 @@ services:
     image: vsl-build:latest
     container_name: vsl_build
     environment:
-      - CMAKE_BUILD_PARALLEL_LEVEL=28   # usa todos os cores no build
+      - CMAKE_BUILD_PARALLEL_LEVEL=28
     volumes:
-      - ./main:/workspace/main          # processo principal C++
-      - ./godot:/workspace/godot        # cenas e assets
-      - ./solver:/workspace/solver      # acesso ao libjulia compilado
-      - build-cache:/workspace/.cache   # cache de compilação
+      - ./main:/workspace/main
+      - ./godot:/workspace/godot
+      - ./solver:/workspace/solver
+      - build-cache:/workspace/.cache
     working_dir: /workspace
-    # Build completo: LibGodot + processo principal
+    # CORREÇÃO: Adicionado barras invertidas (\) para que o bash entenda a continuação do comando
     command: >
       bash -c "
         echo '=== Compilando processo principal VSL ===' &&
         cd /workspace/main &&
-        cmake -B build
-          -DCMAKE_BUILD_TYPE=RelWithDebInfo
-          -GNinja
+        cmake -B build \
+          -DCMAKE_BUILD_TYPE=RelWithDebInfo \
+          -GNinja \
           -DCMAKE_EXPORT_COMPILE_COMMANDS=ON &&
         cmake --build build -j${CMAKE_BUILD_PARALLEL_LEVEL:-$(nproc)} &&
         echo '=== Build concluído ==='
@@ -101,7 +87,6 @@ services:
     volumes:
       - ./paper:/workspace/paper
     working_dir: /workspace/paper
-    # Watch mode — recompila ao salvar qualquer .tex
     command: >
       latexmk -pdf -pvc
       -interaction=nonstopmode
@@ -109,8 +94,6 @@ services:
       main.tex
 
   # ─── Compilar sysimage Julia (PackageCompiler) ───────────────────
-  # Uso: docker compose run --rm julia-compile
-  # Gera solver/libjulia_vsl.so para embed no processo principal C++
   julia-compile:
     build:
       context: ./solver
@@ -126,10 +109,9 @@ services:
       - ./solver:/workspace/solver
       - julia-depot:/root/.julia
     working_dir: /workspace/solver
-    # Compila o solver como biblioteca compartilhada
     command: >
       julia --project=. -e "
-        using PackageCompiler
+        using PackageCompiler;
         create_library(
           \".\",
           \"build/libjulia_vsl\";
@@ -137,12 +119,12 @@ services:
           precompile_execution_file = \"test/precompile_hints.jl\",
           incremental = false,
           filter_stdlibs = true,
-        )
-        println(\"✓ libjulia_vsl compilada em solver/build/\")
+        );
+        println(\"✓ libjulia_vsl compilada em solver/build/\");
       "
 
 volumes:
   julia-depot:
-    name: vsl_julia_depot   # cache persistente de pacotes Julia
+    name: vsl_julia_depot
   build-cache:
-    name: vsl_build_cache   # cache de compilação C++
+    name: vsl_build_cache
