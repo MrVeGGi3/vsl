@@ -383,10 +383,15 @@ end
     n_save    = 500
     saveat_dt = t_end / (n_save - 1)
 
+    # Trigger only on downward zero-crossing (landing), not at launch (z=0 at t=0).
+    # save_positions=(false,false): avoid duplicate timestamps from the callback + termination.
+    landing_cb = ContinuousCallback((u, t, i) -> u[3], nothing;
+        affect_neg! = terminate!, save_positions = (false, false))
     prob = ODEProblem(sixdof!, u0, (0.0, t_end), p)
-    sol  = solve(prob, Tsit5(); reltol=1e-8, abstol=1e-8, saveat=saveat_dt)
+    sol  = solve(prob, Tsit5(); reltol=1e-8, abstol=1e-8, saveat=saveat_dt,
+                 callback=landing_cb)
 
-    @test sol.retcode == ReturnCode.Success
+    @test sol.retcode in (ReturnCode.Success, ReturnCode.Terminated)
     @test length(sol.t) <= n_save + 1
 
     # Timestamps must be strictly increasing

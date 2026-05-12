@@ -75,10 +75,15 @@ Forces (ENU frame):
 
 Rotation (body frame, Euler rigid-body equations):
   I · dω/dt = τ − ω × (I·ω)
-  τ = aerodynamic pitch/yaw restoring moment when use_atmosphere=true, else 0
+  τ = r_cp × F_aero_body  (moment arm from CG to CP, crossed with aero force)
 
 Quaternion kinematics:
   dq/dt = 0.5 · Ω(ω_body) · q      (via `dquat` from ReferenceFrameRotations)
+
+Aerodynamic model validity:
+  Within table AoA bounds  → full CD/CN model with correct lateral direction.
+  Beyond table AoA bounds  → drag-only (CD at max table AoA, opposing velocity).
+  This avoids non-physical forces and discontinuities in the post-apogee phase.
 """
 function sixdof!(du, u, p::SixDOFParams, t::Float64)
     # ── Extract states via views (no copy) ──────────────────────────────────
@@ -95,29 +100,61 @@ function sixdof!(du, u, p::SixDOFParams, t::Float64)
     F_thrust, m = thrust_at(p.thrust_curve, t)
 
     # ── Aerodynamic + atmospheric forces ────────────────────────────────────
-    τ_aero_y = 0.0  # pitch/yaw restoring torque (body y-axis); 0 in vacuum
     F_aero_body = if p.use_atmosphere
         alt_m   = max(r[3] + p.launch_alt_m, 0.0)
         lat_deg = p.lat0_deg + r[2] / 111_320.0
         lon_deg = p.lon0_deg + r[1] / (111_320.0 * cos(deg2rad(p.lat0_deg)))
         atm = nrlmsise00_at(alt_m, lat_deg, lon_deg, p.jd_epoch;
                             f107A=p.f107A, f107=p.f107, ap=p.ap)
-        v_enu   = SVector(v[1], v[2], v[3])
-        v_body  = D' * v_enu
-        v_mag   = sqrt(v[1]^2 + v[2]^2 + v[3]^2)
-        mach    = (v_mag < 1.0) ? 0.0 : v_mag / atm.speed_of_sound
-        aoa_rad = (v_mag < 1.0) ? 0.0 :
-                  acos(clamp(v_body[3] / v_mag, -1.0, 1.0))
-        q_dyn   = 0.5 * atm.density * v_mag^2
-        mach_c  = clamp(mach,    p.aero_table.mach_grid[1], p.aero_table.mach_grid[end])
-        aoa_c   = clamp(aoa_rad, p.aero_table.aoa_grid[1],  p.aero_table.aoa_grid[end])
-        # Pitch/yaw restoring moment: τ_y = CN·q·S·(xcg−xcp); stable when xcp > xcg
-        τ_aero_y = p.aero_table._itp_CN(mach_c, aoa_c) * (p.xcg - p.xcp) * q_dyn * p.S_ref
-        aero_forces(p.aero_table, mach, aoa_rad, q_dyn, p.S_ref)
+        v_enu        = SVector(v[1], v[2], v[3])
+        v_body       = D' * v_enu
+        v_mag        = sqrt(v[1]^2 + v[2]^2 + v[3]^2)
+        mach         = v_mag / atm.speed_of_sound
+        q_dyn        = 0.5 * atm.density * v_mag^2
+        # atan(perp, z) gives AoA in [0,π] — continuous everywhere including
+        # apogee (v→0) and 180° (body-up/velocity-down), unlike acos(z/v_mag)
+        # which has a step discontinuity when v_mag crosses the old 1 m/s threshold.
+        v_body_perp  = sqrt(v_body[1]^2 + v_body[2]^2)
+        aoa_rad      = atan(v_body_perp, v_body[3])
+        aoa_max      = p.aero_table.aoa_grid[end]
+        mach_c       = clamp(mach, p.aero_table.mach_grid[1], p.aero_table.mach_grid[end])
+        if aoa_rad <= aoa_max
+            # Normal flight regime: full CD/CN aero model.
+            # aero_forces assumes velocity in body +x direction; rotate lateral
+            # component to the actual direction in body xy-plane.
+            F_unsigned = aero_forces(p.aero_table, mach, aoa_rad, q_dyn, p.S_ref)
+            if v_body_perp > 1e-6
+                v_hat_x = v_body[1] / v_body_perp
+                v_hat_y = v_body[2] / v_body_perp
+                SVector(F_unsigned[1] * v_hat_x, F_unsigned[1] * v_hat_y, F_unsigned[3])
+            else
+                # AoA ≈ 0: lateral force direction undefined but magnitude ≈ 0
+                # (CN = 0 at AoA = 0 in the table).
+                SVector(0.0, 0.0, F_unsigned[3])
+            end
+        else
+            # Large AoA (beyond table bounds — model invalid): drag only.
+            # Force = -CD * q_dyn * S_ref * v̂_body, opposing the velocity.
+            # Using CD evaluated at max table AoA as a conservative estimate.
+            CD = p.aero_table._itp_CD(mach_c, aoa_max)
+            if v_mag > 1e-6
+                scale = -CD * q_dyn * p.S_ref / v_mag
+                SVector(v_body[1] * scale, v_body[2] * scale, v_body[3] * scale)
+            else
+                SVector(0.0, 0.0, 0.0)
+            end
+        end
     else
         SVector(0.0, 0.0, 0.0)
     end
-    τ_aero = SVector(0.0, τ_aero_y, 0.0)
+
+    # Aerodynamic restoring torque: r_cp × F_aero_body.
+    # r_cp = [0, 0, xcg − xcp]: vector from CG to CP along body z.
+    # Stable when xcp > xcg (CP aft of CG): produces a restoring moment for
+    # any pitch/yaw direction.  For large AoA (drag-only), r_cp × (drag along v̂)
+    # is non-zero only when v̂ has a lateral component, which is physically correct.
+    r_cp   = SVector(0.0, 0.0, p.xcg - p.xcp)
+    τ_aero = cross(r_cp, F_aero_body)
 
     # ── Total body-frame force (thrust along body +z axis) ──────────────────
     F_body_total = SVector(F_aero_body[1],

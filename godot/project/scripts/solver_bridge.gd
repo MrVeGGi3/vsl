@@ -135,6 +135,29 @@ func get_trajectory_times() -> PackedFloat32Array:
 		return PackedFloat32Array()
 	return PackedFloat32Array(_data.get("trajectory_times", []) as Array)
 
+func get_trajectory_summary() -> Dictionary:
+	if not _loaded:
+		return {}
+	return {
+		"apogee_m":               float(_data.get("trajectory_apogee_m",        0.0)),
+		"apogee_time_s":          float(_data.get("apogee_time_s",               0.0)),
+		"landing_time_s":         float(_data.get("landing_time_s",              0.0)),
+		"range_m":                float(_data.get("range_m",                     0.0)),
+		"max_velocity_mps":       float(_data.get("max_velocity_mps",            0.0)),
+		"max_velocity_mach":      float(_data.get("max_velocity_mach",           0.0)),
+		"max_q_pa":               float(_data.get("max_q_pa",                    0.0)),
+		"max_q_altitude_m":       float(_data.get("max_q_altitude_m",            0.0)),
+		"max_q_mach":             float(_data.get("max_q_mach",                  0.0)),
+		"max_q_time_s":           float(_data.get("max_q_time_s",                0.0)),
+		"burnout_time_s":         float(_data.get("burnout_time_s",              0.0)),
+		"burnout_altitude_m":     float(_data.get("burnout_altitude_m",          0.0)),
+		"burnout_velocity_mps":   float(_data.get("burnout_velocity_mps",        0.0)),
+		"propellant_mass_kg":     float(_data.get("propellant_mass_kg",          0.0)),
+		"total_impulse_ns":       float(_data.get("total_impulse_ns",            0.0)),
+		"max_aoa_deg":            float(_data.get("max_aoa_deg",                 0.0)),
+		"max_angular_rate_rad_s": float(_data.get("max_angular_rate_rad_s",      0.0)),
+	}
+
 func export_report_json(user_path: String) -> void:
 	if not _loaded:
 		push_warning("SolverBridge: no data to export")

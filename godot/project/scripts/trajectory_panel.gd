@@ -17,15 +17,21 @@ var _loaded:      bool  = false
 var _apogee_m:    float = 0.0
 var _apogee_t:    float = 0.0
 
+const PANEL_W := 300.0
+const PANEL_H := 210.0
+
 func _ready() -> void:
 	_positions = PackedVector3Array()
 	_positions.resize(MAX_POINTS)
+	_do_layout()
+	get_viewport().size_changed.connect(_do_layout)
 
-	# Anchor: bottom-left corner, 300 × 210 px
-	set_anchor_and_offset(SIDE_LEFT,   0.0,   0.0)
-	set_anchor_and_offset(SIDE_RIGHT,  0.0, 300.0)
-	set_anchor_and_offset(SIDE_TOP,    1.0, -210.0)
-	set_anchor_and_offset(SIDE_BOTTOM, 1.0,   0.0)
+func _do_layout() -> void:
+	var vp := get_viewport_rect().size
+	# Bottom-left corner, above the 46 px timeline strip
+	set_position(Vector2(0.0, vp.y - PANEL_H - 46.0))
+	set_size(Vector2(PANEL_W, PANEL_H))
+	clip_contents = true  # prevent draw calls from escaping the panel rect
 
 func _process(_delta: float) -> void:
 	if _loaded:
@@ -74,7 +80,14 @@ func _draw() -> void:
 	var ph  := sz.y - y0 - MARGIN       # plot height
 	var origin := Vector2(x0, y0 + ph)  # bottom-left of plot axes
 
-	var t_max   := maxf(float(_times[_point_count - 1]), 1.0)
+	# Clip trajectory to air-time only (altitude >= 0); last point underground breaks the chart
+	var n_draw := _point_count
+	for i in range(_point_count - 1, -1, -1):
+		if _positions[i].y >= 0.0:
+			n_draw = i + 1
+			break
+
+	var t_max   := maxf(float(_times[n_draw - 1]), 1.0)
 	var alt_max := maxf(_apogee_m, 1.0)
 
 	# Axes
@@ -89,16 +102,16 @@ func _draw() -> void:
 			Color(1.0, 0.4, 0.1, 0.45))
 		xi += 8
 
-	# Trajectory polyline with altitude-based color gradient
+	# Trajectory polyline — only valid (above-ground) points
 	var pts    := PackedVector2Array()
 	var colors := PackedColorArray()
-	pts.resize(_point_count)
-	colors.resize(_point_count)
-	for i in _point_count:
+	pts.resize(n_draw)
+	colors.resize(n_draw)
+	for i in n_draw:
 		var t_n := float(_times[i]) / t_max
-		var a_n := _positions[i].y  / alt_max
+		var a_n := clampf(_positions[i].y / alt_max, 0.0, 1.0)
 		pts[i]    = Vector2(origin.x + t_n * pw, origin.y - a_n * ph)
-		colors[i] = COLOR_GROUND.lerp(COLOR_APOGEE, clampf(a_n, 0.0, 1.0))
+		colors[i] = COLOR_GROUND.lerp(COLOR_APOGEE, a_n)
 	draw_polyline_colors(pts, colors, LINE_WIDTH, true)
 
 	# Apogee dot + label
