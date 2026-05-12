@@ -18,6 +18,13 @@ var _len_field:       LineEdit
 var _nose_option:     OptionButton
 var _nose_len_field:  LineEdit
 
+var _fin_n_field:     LineEdit
+var _fin_cr_field:    LineEdit
+var _fin_ct_field:    LineEdit
+var _fin_s_field:     LineEdit
+var _fin_sweep_field: LineEdit
+var _fin_xf_field:    LineEdit
+
 var _xcp_field:       LineEdit
 var _xcg_field:       LineEdit
 var _stability_label: Label
@@ -55,6 +62,7 @@ func _ready() -> void:
 
 	_build_propulsion_section(inner)
 	_build_body_section(inner)
+	_build_fin_section(inner)
 	_build_aero_section(inner)
 	_build_inertia_section(inner)
 
@@ -112,6 +120,23 @@ func _build_body_section(parent: VBoxContainer) -> void:
 	_nose_option.add_item("conical",   2)
 	_nose_option.focus_mode = Control.FOCUS_NONE
 	hbox.add_child(_nose_option)
+	_diam_field.text_changed.connect(_update_barrowman.unbind(1))
+	_nose_len_field.text_changed.connect(_update_barrowman.unbind(1))
+	_nose_option.item_selected.connect(_update_barrowman.unbind(1))
+	parent.add_child(HSeparator.new())
+
+func _build_fin_section(parent: VBoxContainer) -> void:
+	_section_label(parent, "FINS (Barrowman)")
+	var grid := _new_grid(parent)
+	_fin_n_field     = _field_row(grid, "N fins",    "")
+	_fin_cr_field    = _field_row(grid, "Root chord", "cm")
+	_fin_ct_field    = _field_row(grid, "Tip chord",  "cm")
+	_fin_s_field     = _field_row(grid, "Semi-span",  "cm")
+	_fin_sweep_field = _field_row(grid, "LE sweep",   "cm")
+	_fin_xf_field    = _field_row(grid, "Root LE x",  "m")
+	for f: LineEdit in [_fin_n_field, _fin_cr_field, _fin_ct_field,
+						_fin_s_field, _fin_sweep_field, _fin_xf_field]:
+		f.text_changed.connect(_update_barrowman.unbind(1))
 	parent.add_child(HSeparator.new())
 
 func _build_aero_section(parent: VBoxContainer) -> void:
@@ -169,9 +194,19 @@ func _populate_fields() -> void:
 		"conical":   _nose_option.selected = 2
 		_:           _nose_option.selected = 0
 
+	var fins: Dictionary = rkt.get("fins", {})
+	_fin_n_field.text     = str(int(fins.get("n_fins", 4)))
+	_fin_cr_field.text    = "%.1f" % (float(fins.get("root_chord_m", 0.15)) * 100.0)
+	_fin_ct_field.text    = "%.1f" % (float(fins.get("tip_chord_m",  0.05)) * 100.0)
+	_fin_s_field.text     = "%.1f" % (float(fins.get("semi_span_m",  0.10)) * 100.0)
+	_fin_sweep_field.text = "%.1f" % (float(fins.get("le_sweep_m",   0.05)) * 100.0)
+	_fin_xf_field.text    = str(float(fins.get("root_le_from_nose_m", 0.95)))
+
 	var aero: Dictionary = rkt.get("aero", {})
 	_xcp_field.text = str(float(aero.get("xcp_m", 0.85)))
 	_xcg_field.text = str(float(aero.get("xcg_m", 0.55)))
+
+	_update_barrowman()
 	_update_derived_aero()
 
 	_i_lat_field.text = str(float(rkt.get("inertia_lateral_kgm2", 0.96)))
@@ -182,9 +217,55 @@ func _update_derived_propulsion() -> void:
 	var t_b   := float(_tb_field.text)   if _tb_field.text.is_valid_float()   else 0.0
 	_impulse_label.text = "%.0f" % (f_max * t_b)
 
+func _update_barrowman() -> void:
+	var N := int(_fin_n_field.text) if _fin_n_field.text.is_valid_int() else 0
+	if N <= 0:
+		return
+
+	var Cr := float(_fin_cr_field.text)    / 100.0 if _fin_cr_field.text.is_valid_float()    else 0.0
+	var Ct := float(_fin_ct_field.text)    / 100.0 if _fin_ct_field.text.is_valid_float()    else 0.0
+	var s  := float(_fin_s_field.text)     / 100.0 if _fin_s_field.text.is_valid_float()     else 0.0
+	var sw := float(_fin_sweep_field.text) / 100.0 if _fin_sweep_field.text.is_valid_float() else 0.0
+	var xf := float(_fin_xf_field.text)             if _fin_xf_field.text.is_valid_float()    else 0.0
+
+	var d_cm  := float(_diam_field.text)     if _diam_field.text.is_valid_float()     else 8.0
+	var Ln_cm := float(_nose_len_field.text) if _nose_len_field.text.is_valid_float() else 24.0
+	var d  := d_cm  / 100.0
+	var Ln := Ln_cm / 100.0
+	var r  := d / 2.0
+
+	if Cr <= 0.0 or s <= 0.0 or d <= 0.0 or Ln <= 0.0:
+		return
+
+	# Nose CP (Barrowman 1966 — subsonic, zero AoA)
+	var nose_k: float
+	match _nose_option.selected:
+		1: nose_k = 0.500  # von Kármán
+		2: nose_k = 0.667  # conical
+		_: nose_k = 0.466  # tangent ogive
+	var xCP_nose := nose_k * Ln
+
+	# Fin CNα
+	var cr_ct := Cr + Ct
+	var K     := 1.0 + r / (r + s)
+	var ar    := 2.0 * s / cr_ct
+	var denom := 1.0 + sqrt(1.0 + ar * ar)
+	var CNa_fin := K * 4.0 * float(N) * pow(s / d, 2.0) / denom
+
+	# Fin CP from root LE (Barrowman 1966, Eq. 4.15)
+	var xf_local := sw * (Cr + 2.0 * Ct) / (3.0 * cr_ct) \
+				  + (1.0 / 6.0) * (cr_ct - Cr * Ct / cr_ct)
+	var xCP_fin := xf + xf_local
+
+	# Weighted sum
+	var CNa_nose := 2.0
+	var xCP      := (CNa_nose * xCP_nose + CNa_fin * xCP_fin) / (CNa_nose + CNa_fin)
+
+	_xcp_field.text = "%.3f" % xCP
+
 func _update_derived_aero() -> void:
-	var xcp := float(_xcp_field.text)  if _xcp_field.text.is_valid_float()  else 0.0
-	var xcg := float(_xcg_field.text)  if _xcg_field.text.is_valid_float()  else 0.0
+	var xcp  := float(_xcp_field.text)  if _xcp_field.text.is_valid_float()  else 0.0
+	var xcg  := float(_xcg_field.text)  if _xcg_field.text.is_valid_float()  else 0.0
 	var d_cm := float(_diam_field.text) if _diam_field.text.is_valid_float() else 8.0
 	var d_m  := d_cm / 100.0
 	_stability_label.text = "%.2f" % ((xcp - xcg) / d_m) if d_m > 0.0 else "—"
@@ -218,6 +299,15 @@ func _on_apply() -> void:
 	_params["rocket"]["nose_shape"]           = ["ogive", "vonkarman", "conical"][_nose_option.selected]
 	_params["rocket"]["inertia_lateral_kgm2"] = float(_i_lat_field.text)
 	_params["rocket"]["inertia_axial_kgm2"]   = float(_i_ax_field.text)
+
+	_params["rocket"]["fins"] = {
+		"n_fins":              int(_fin_n_field.text)     if _fin_n_field.text.is_valid_int()       else 0,
+		"root_chord_m":       float(_fin_cr_field.text)    / 100.0 if _fin_cr_field.text.is_valid_float()    else 0.0,
+		"tip_chord_m":        float(_fin_ct_field.text)    / 100.0 if _fin_ct_field.text.is_valid_float()    else 0.0,
+		"semi_span_m":        float(_fin_s_field.text)     / 100.0 if _fin_s_field.text.is_valid_float()     else 0.0,
+		"le_sweep_m":         float(_fin_sweep_field.text) / 100.0 if _fin_sweep_field.text.is_valid_float() else 0.0,
+		"root_le_from_nose_m": float(_fin_xf_field.text)            if _fin_xf_field.text.is_valid_float()   else 0.0,
+	}
 
 	if not _params["rocket"].has("aero"):
 		_params["rocket"]["aero"] = {}
