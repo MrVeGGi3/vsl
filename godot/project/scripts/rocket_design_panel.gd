@@ -1,10 +1,12 @@
 extends PanelContainer
 
-const PANEL_W        := 265.0
-const PANEL_OFFSET_X := 262.0
-const G0             := 9.80665
+const PANEL_W := 265.0
+const PANEL_H := 560.0
+const G0      := 9.80665
 
 var _params: Dictionary = {}
+var _dragging := false
+var _drag_offset := Vector2.ZERO
 
 var _fmax_field:      LineEdit
 var _isp_field:       LineEdit
@@ -34,14 +36,9 @@ var _i_ax_field:      LineEdit
 
 var _status_label:    Label
 
-func _do_layout() -> void:
-	var vp := get_viewport_rect().size
-	set_position(Vector2(PANEL_OFFSET_X, 0.0))
-	set_size(Vector2(PANEL_W, vp.y - 46.0))
-
 func _ready() -> void:
-	_do_layout()
-	get_viewport().size_changed.connect(_do_layout)
+	_fit_to_viewport()
+	get_viewport().size_changed.connect(_fit_to_viewport)
 
 	var outer := VBoxContainer.new()
 	outer.size_flags_vertical = Control.SIZE_EXPAND_FILL
@@ -78,15 +75,47 @@ func _ready() -> void:
 
 	_load_and_populate()
 
+func _fit_to_viewport() -> void:
+	var vp := get_viewport_rect().size
+	var h = min(PANEL_H, vp.y - 44.0)
+	set_size(Vector2(PANEL_W, h))
+	var x = clamp(290.0, 0.0, max(0.0, vp.x - PANEL_W))
+	var y = clamp(position.y, 40.0, max(40.0, vp.y - h))
+	set_position(Vector2(x, y))
+
 func _build_header(parent: VBoxContainer) -> void:
 	var hbox := HBoxContainer.new()
+	hbox.custom_minimum_size = Vector2(0, 26)
+	hbox.mouse_filter = Control.MOUSE_FILTER_STOP
 	parent.add_child(hbox)
+
 	var title := Label.new()
 	title.text = "ROCKET DESIGN"
 	title.add_theme_font_size_override("font_size", 13)
 	title.size_flags_horizontal = Control.SIZE_EXPAND_FILL
+	title.mouse_filter = Control.MOUSE_FILTER_PASS
 	hbox.add_child(title)
+
+	var close_btn := Button.new()
+	close_btn.text = "×"
+	close_btn.flat = true
+	close_btn.custom_minimum_size = Vector2(24, 0)
+	close_btn.focus_mode = Control.FOCUS_NONE
+	close_btn.pressed.connect(func(): visible = false)
+	hbox.add_child(close_btn)
+
 	parent.add_child(HSeparator.new())
+	hbox.gui_input.connect(_on_titlebar_input)
+
+func _on_titlebar_input(event: InputEvent) -> void:
+	if event is InputEventMouseButton and event.button_index == MOUSE_BUTTON_LEFT:
+		_dragging = event.pressed
+		if event.pressed:
+			_drag_offset = get_global_mouse_position() - global_position
+		get_viewport().set_input_as_handled()
+	elif event is InputEventMouseMotion and _dragging:
+		global_position = get_global_mouse_position() - _drag_offset
+		get_viewport().set_input_as_handled()
 
 func _build_propulsion_section(parent: VBoxContainer) -> void:
 	_section_label(parent, "PROPULSION")
