@@ -1,13 +1,13 @@
 [gd_scene format=3 uid="uid://main"]
 
-[ext_resource type="Script" uid="uid://d3iiwhk23a6cl" path="res://scripts/main_scene.gd" id="1"]
+[ext_resource type="Script" uid="uid://6yxnse0n5flh" path="res://scripts/main_scene.gd" id="1"]
 [ext_resource type="PackedScene" path="res://scenes/orbit_viewer.tscn" id="2"]
 [ext_resource type="PackedScene" uid="uid://earth" path="res://scenes/earth.tscn" id="3"]
 [ext_resource type="PackedScene" uid="uid://bpsmqj4x1wnq" path="res://scenes/analysis_panel.tscn" id="4"]
 [ext_resource type="PackedScene" uid="uid://c2ndkf8p7mn6" path="res://scenes/mission_timeline.tscn" id="5"]
-[ext_resource type="Script" uid="uid://da58iyw6wvqdn" path="res://scripts/vr_controller.gd" id="6"]
-[ext_resource type="Script" uid="uid://ol5566taxm0j" path="res://scripts/vr_ui_panel.gd" id="7"]
-[ext_resource type="Script" path="res://scripts/solver_bridge.gd" id="8"]
+[ext_resource type="Script" uid="uid://bsqme30t14t5h" path="res://scripts/vr_controller.gd" id="6"]
+[ext_resource type="Script" uid="uid://ddh5nftypyr8c" path="res://scripts/vr_ui_panel.gd" id="7"]
+[ext_resource type="Script" uid="uid://c8c13abslulgh" path="res://scripts/solver_bridge.gd" id="8"]
 [ext_resource type="PackedScene" path="res://scenes/trajectory_panel.tscn" id="9"]
 [ext_resource type="PackedScene" path="res://scenes/mission_design_panel.tscn" id="10"]
 [ext_resource type="PackedScene" path="res://scenes/rocket_design_panel.tscn" id="11"]
@@ -32,7 +32,6 @@ is_right_hand = false
 [node name="XRController3DRight" type="XRController3D" parent="XROrigin3D" unique_id=1546357623]
 tracker = &"right_hand"
 script = ExtResource("6")
-is_right_hand = true
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=1710876904]
 
@@ -57,8 +56,12 @@ script = ExtResource("7")
 [node name="AnalysisPanel" parent="UILayer" unique_id=1442753459 instance=ExtResource("4")]
 
 [node name="MissionTimeline" parent="UILayer" unique_id=1239035440 instance=ExtResource("5")]
+layout_mode = 3
+anchors_preset = 0
 
 [node name="TrajectoryPanel" parent="UILayer" unique_id=987654321 instance=ExtResource("9")]
+layout_mode = 3
+anchors_preset = 0
 
 [node name="MissionDesignPanel" parent="UILayer" unique_id=111111101 instance=ExtResource("10")]
 
