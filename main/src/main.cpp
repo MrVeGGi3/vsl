@@ -8,6 +8,7 @@
 #include <julia.h>
 
 #include "double_buffer.h"
+#include "file_watcher.h"
 #include "godot_bridge.h"
 #include "julia_api.h"
 #include "mission_params.h"
@@ -251,12 +252,38 @@ int main(int argc, char* argv[]) {
     }
 
     // 5. Render loop — solver refreshes orbit every 60 frames (~1 Hz at 60 fps)
+    //    Hot-reload: inotify watches mission_params.json; any write triggers a
+    //    full re-solve. Render blocks for the duration (~1-2 s) — intentional.
+    FileWatcher watcher(params_file);
+    if (!watcher.valid())
+        std::fprintf(stderr, "[vsl] inotify unavailable — hot-reload disabled\n");
+
+    using Clock = std::chrono::steady_clock;
+    auto last_reload = Clock::now() - std::chrono::seconds(10); // allow immediate
+
     int frame = 0;
     while (g_running.load(std::memory_order_relaxed)) {
         if (!godot_iterate()) {
             g_running.store(false, std::memory_order_relaxed);
             break;
         }
+
+        // Hot-reload: debounce 300 ms so burst writes from editors fire once.
+        if (watcher.poll()) {
+            auto now = Clock::now();
+            if (now - last_reload > std::chrono::milliseconds(300)) {
+                last_reload = now;
+                std::fprintf(stderr, "[vsl] mission_params.json changed — reloading\n");
+                VslMissionParams mp_new = mp;
+                if (load_mission_params(params_file, mp_new)) {
+                    mp = mp_new;
+                    solver_update_orbit(mp);
+                    solver_update_trajectory(mp);
+                    write_solver_json(project_path, mp);
+                }
+            }
+        }
+
         if (++frame % 60 == 0)
             solver_update_orbit(mp);
     }
