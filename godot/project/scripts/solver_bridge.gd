@@ -26,8 +26,10 @@ func _load_results() -> void:
 		return
 	_data   = json.get_data()
 	_loaded = true
-	print("[SolverBridge] loaded: %d orbit pts, %d access wins" % [
+	print("[SolverBridge] loaded: orbit=%d pts, traj=%d pts (apogee %.0f m), access=%d wins" % [
 		int(_data.get("point_count", 0)),
+		int(_data.get("trajectory_point_count", 0)),
+		float(_data.get("trajectory_apogee_m", 0.0)),
 		(_data.get("access_windows", []) as Array).size()
 	])
 
@@ -105,6 +107,33 @@ func compute_hohmann(r1_km: float, r2_km: float) -> Dictionary:
 		"dv2_kms": v2 - va,
 		"tof_s":   PI * sqrt(a_t * a_t * a_t / MU),
 	}
+
+# ── Trajectory API ─────────────────────────────────────────────────────────────
+
+func get_trajectory_point_count() -> int:
+	return int(_data.get("trajectory_point_count", 0))
+
+func get_trajectory_apogee_m() -> float:
+	return float(_data.get("trajectory_apogee_m", 0.0))
+
+# Fills arr with ENU positions converted to Godot Y-up:
+#   Vector3(East, Up, -North)  — .y gives altitude in metres.
+func copy_trajectory_positions_to(arr: PackedVector3Array, count: int) -> void:
+	if not _loaded:
+		return
+	var flat: Array = _data.get("trajectory_positions_flat", [])
+	var n := mini(count, flat.size() / 3)
+	for i in n:
+		arr[i] = Vector3(
+			float(flat[i * 3]),
+			float(flat[i * 3 + 2]),   # ENU Up  → Godot Y
+			-float(flat[i * 3 + 1])   # ENU North → Godot -Z
+		)
+
+func get_trajectory_times() -> PackedFloat32Array:
+	if not _loaded:
+		return PackedFloat32Array()
+	return PackedFloat32Array(_data.get("trajectory_times", []) as Array)
 
 func export_report_json(user_path: String) -> void:
 	if not _loaded:

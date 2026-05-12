@@ -356,3 +356,52 @@ end
         @test apogee_motor > 5_000.0  # > 5 km for N-class from ground
     end
 end
+
+# ── Case 7: Visualization points — saveat gives evenly-spaced timestamps ──────
+@testset "trajectory points for visualization — saveat and apogee" begin
+    tc = ThrustCurve(
+        [0.0, 0.1, 3.0, 3.05],
+        [0.0, 2100.0, 1800.0, 0.0],
+        [0.0, 0.60, 0.55, 0.0],
+        8.0, 6.2,
+    )
+    I_diag = SMatrix{3,3,Float64,9}(diagm([0.96, 0.96, 0.006]))
+    I_inv  = SMatrix{3,3,Float64,9}(diagm([1/0.96, 1/0.96, 1/0.006]))
+    at = AeroTable(
+        [0.0, 0.5, 1.5], [0.0, 0.0873, 0.1745],
+        [0.70 0.70 0.70; 0.55 0.58 0.65; 0.45 0.48 0.55],
+        [0.0  0.20 0.40; 0.0  0.22 0.44; 0.0  0.18 0.36],
+    )
+    p = SixDOFParams(
+        tc, at, I_diag, I_inv,
+        0.00503, 0.85, 0.55,
+        2451545.0, 0.0, 0.0, 0.0,
+        150.0, 150.0, 4.0, true, sixdof_cache(),
+    )
+    u0 = Float64[0, 0, 0,  0, 0, 0,  1, 0, 0, 0,  0, 0, 0]
+    t_end     = 120.0
+    n_save    = 500
+    saveat_dt = t_end / (n_save - 1)
+
+    prob = ODEProblem(sixdof!, u0, (0.0, t_end), p)
+    sol  = solve(prob, Tsit5(); reltol=1e-8, abstol=1e-8, saveat=saveat_dt)
+
+    @test sol.retcode == ReturnCode.Success
+    @test length(sol.t) <= n_save + 1
+
+    # Timestamps must be strictly increasing
+    for i in 1:length(sol.t)-1
+        @test sol.t[i] < sol.t[i+1]
+    end
+
+    # N-class motor from ground: apogee > 3 km with atmosphere
+    apogee_m = maximum(u[3] for u in sol.u)
+    @test apogee_m > 3_000.0
+
+    # Launch position at z ≈ 0
+    @test abs(sol.u[1][3]) < 1.0
+
+    # Full state vector at each step (needed for positions_flat export)
+    @test all(length(u) == 13 for u in sol.u)
+    @test all(isfinite.(sol.u[end]))
+end

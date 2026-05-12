@@ -56,7 +56,10 @@ static constexpr double ROCKET_TEND    = 120.0;    // s simulation duration
 
 struct JuliaRuntime {
     explicit JuliaRuntime(const char* sysimage) {
-        jl_init();
+        if (sysimage && sysimage[0])
+            jl_init_with_image(VSL_JULIA_BINDIR, sysimage);
+        else
+            jl_init();
         if (vsl_solver_init(sysimage) != 0)
             std::fprintf(stderr,
                 "[vsl] WARNING: vsl_solver_init failed\n");
@@ -112,23 +115,26 @@ static void solver_update_trajectory() {
         3, 3,  // n_mach, n_aoa
     };
 
-    int rc = vsl_trajectory_sixdof(
+    int rc = vsl_trajectory_sixdof_points(
         0.0, 0.0, 0.0,          // position — launch from pad (ground level)
         0.0, 0.0, 0.0,          // velocity — at rest (motor fires at t=0)
         1.0, 0.0, 0.0, 0.0,    // quaternion — vertical, no rotation
         0.0, 0.0, 0.0,          // angular rate — zero
         &thrust, &aero, 1,      // propulsion, aerodynamics, use NRLMSISE-00
         ROCKET_TEND,
-        buf.final_state, &buf.apogee_m
+        buf.final_state, &buf.apogee_m,
+        buf.times.data(), buf.positions.data(), &buf.point_count,
+        MAX_TRAJ_POINTS
     );
 
     if (rc == 0) {
         buf.valid = 1;
         buf.frame_id++;
         g_trajectory_buffer.swap();
-        std::fprintf(stderr, "[vsl] trajectory: apogee %.0f m\n", buf.apogee_m);
+        std::fprintf(stderr, "[vsl] trajectory: apogee %.0f m, %d pts\n",
+                     buf.apogee_m, buf.point_count);
     } else {
-        std::fprintf(stderr, "[vsl] vsl_trajectory_sixdof error: %d\n", rc);
+        std::fprintf(stderr, "[vsl] vsl_trajectory_sixdof_points error: %d\n", rc);
     }
 }
 
@@ -213,10 +219,25 @@ static void write_solver_json(const char* project_path) {
 
     auto& trj = g_trajectory_buffer.front();
     std::fprintf(f, "  \"trajectory_apogee_m\": %.1f,\n", trj.apogee_m);
+    std::fprintf(f, "  \"trajectory_point_count\": %d,\n", trj.point_count);
     std::fprintf(f, "  \"trajectory_final_state\": [");
     for (int i = 0; i < 13; ++i) {
         if (i > 0) std::fputc(',', f);
         std::fprintf(f, "%.6f", trj.final_state[i]);
+    }
+    std::fprintf(f, "],\n");
+
+    std::fprintf(f, "  \"trajectory_times\": [");
+    for (int i = 0; i < trj.point_count; ++i) {
+        if (i > 0) std::fputc(',', f);
+        std::fprintf(f, "%.3f", (double)trj.times[i]);
+    }
+    std::fprintf(f, "],\n");
+
+    std::fprintf(f, "  \"trajectory_positions_flat\": [");
+    for (int i = 0; i < trj.point_count * 3; ++i) {
+        if (i > 0) std::fputc(',', f);
+        std::fprintf(f, "%.2f", (double)trj.positions[i]);
     }
     std::fprintf(f, "]\n}\n");
 

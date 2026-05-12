@@ -8,6 +8,7 @@
 [ext_resource type="Script" uid="uid://da58iyw6wvqdn" path="res://scripts/vr_controller.gd" id="6"]
 [ext_resource type="Script" uid="uid://ol5566taxm0j" path="res://scripts/vr_ui_panel.gd" id="7"]
 [ext_resource type="Script" path="res://scripts/solver_bridge.gd" id="8"]
+[ext_resource type="PackedScene" path="res://scenes/trajectory_panel.tscn" id="9"]
 
 [node name="Main" type="Node3D" unique_id=1669414694]
 script = ExtResource("1")
@@ -56,3 +57,5 @@ script = ExtResource("7")
 [node name="MissionTimeline" parent="UILayer" unique_id=1239035440 instance=ExtResource("5")]
 layout_mode = 3
 anchors_preset = 0
+
+[node name="TrajectoryPanel" parent="UILayer" unique_id=987654321 instance=ExtResource("9")]

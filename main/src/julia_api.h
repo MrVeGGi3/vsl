@@ -142,4 +142,24 @@ extern "C" {
         double* out_apogee_m
     );
 
+    // Same as vsl_trajectory_sixdof, but also writes evenly-sampled trajectory
+    // points into out_times (s) and out_positions (x,y,z interleaved, m ENU).
+    // n_save = min(max_points, 1000); saveat = t_end_s / (n_save − 1).
+    int vsl_trajectory_sixdof_points(
+        double x0,   double y0,   double z0,
+        double vx0,  double vy0,  double vz0,
+        double q00,  double q10,  double q20,  double q30,
+        double p0,   double qr0,  double r0,
+        const VslThrustCurveData* thrust,
+        const VslAeroTableData*   aero,
+        int                       use_atmosphere,
+        double t_end_s,
+        double* out_state,
+        double* out_apogee_m,
+        float*  out_times,
+        float*  out_positions,
+        int*    out_count,
+        int     max_points
+    );
+
 } // extern "C"

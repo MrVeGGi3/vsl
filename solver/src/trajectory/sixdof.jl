@@ -97,7 +97,7 @@ function sixdof!(du, u, p::SixDOFParams, t::Float64)
     # ── Aerodynamic + atmospheric forces ────────────────────────────────────
     τ_aero_y = 0.0  # pitch/yaw restoring torque (body y-axis); 0 in vacuum
     F_aero_body = if p.use_atmosphere
-        alt_m   = r[3] + p.launch_alt_m
+        alt_m   = max(r[3] + p.launch_alt_m, 0.0)
         lat_deg = p.lat0_deg + r[2] / 111_320.0
         lon_deg = p.lon0_deg + r[1] / (111_320.0 * cos(deg2rad(p.lat0_deg)))
         atm = nrlmsise00_at(alt_m, lat_deg, lon_deg, p.jd_epoch;

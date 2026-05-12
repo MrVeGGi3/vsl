@@ -13,10 +13,16 @@ struct alignas(64) SolverBuffer {
     uint64_t frame_id{0};
 };
 
-// Trajectory result buffer — final 6-DOF state after ballistic flight.
+static constexpr int MAX_TRAJ_POINTS = 1024;
+
+// Trajectory result buffer — final 6-DOF state + evenly-sampled path points.
+// positions: x,y,z interleaved (m, ENU); times: seconds from launch.
 struct alignas(64) TrajectoryBuffer {
-    double   final_state[13]{};  // [x,y,z (m), vx,vy,vz (m/s), q0..q3, p,q,r (rad/s)]
+    std::array<float, MAX_TRAJ_POINTS * 3> positions{};
+    std::array<float, MAX_TRAJ_POINTS>     times{};
+    double   final_state[13]{};
     double   apogee_m{0.0};
+    int32_t  point_count{0};
     int32_t  valid{0};
     uint64_t frame_id{0};
 };

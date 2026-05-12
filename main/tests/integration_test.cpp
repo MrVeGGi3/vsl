@@ -122,7 +122,7 @@ static void test_hohmann() {
 }
 
 static void test_trajectory_sixdof() {
-    std::printf("[5/6] vsl_trajectory_sixdof\n");
+    std::printf("[5/7] vsl_trajectory_sixdof\n");
 
     // Demo N-class rocket: same data as main.cpp
     static const double tc_times[]  = {0.0, 0.1,    3.0,    3.05};
@@ -173,8 +173,70 @@ static void test_trajectory_sixdof() {
                 apogee_m, state[2], qnorm);
 }
 
+static void test_trajectory_sixdof_points() {
+    std::printf("[6/7] vsl_trajectory_sixdof_points\n");
+
+    static const double tc_times[]  = {0.0, 0.1,    3.0,    3.05};
+    static const double tc_forces[] = {0.0, 2100.0, 1800.0, 0.0};
+    static const double tc_mdots[]  = {0.0, 0.60,   0.55,   0.0};
+
+    static const double aero_mach[] = {0.0, 0.5, 1.5};
+    static const double aero_aoa[]  = {0.0, 0.0873, 0.1745};
+    static const double aero_cd[]   = {
+        0.70, 0.70, 0.70, 0.55, 0.58, 0.65, 0.45, 0.48, 0.55,
+    };
+    static const double aero_cn[]   = {
+        0.0,  0.20, 0.40, 0.0,  0.22, 0.44, 0.0,  0.18, 0.36,
+    };
+
+    VslThrustCurveData thrust{tc_times, tc_forces, tc_mdots, 6.2, 8.0, 4};
+    VslAeroTableData   aero{aero_mach, aero_aoa, aero_cd, aero_cn,
+                            0.00503, 0.85, 0.55, 3, 3};
+
+    static float out_times[1024];
+    static float out_pos[1024 * 3];
+    double state[13]{};
+    double apogee_m = 0.0;
+    int    n_pts    = 0;
+
+    int rc = vsl_trajectory_sixdof_points(
+        0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0,
+        1.0, 0.0, 0.0, 0.0,
+        0.0, 0.0, 0.0,
+        &thrust, &aero, 1,
+        120.0,
+        state, &apogee_m,
+        out_times, out_pos, &n_pts,
+        1024
+    );
+
+    CHECK(rc == 0,                              "return code 0");
+    CHECK(n_pts > 0 && n_pts <= 1024,           "point count in [1, 1024]");
+    CHECK(apogee_m > 5000.0 && apogee_m < 30000.0, "apogee in 5–30 km");
+    CHECK(out_times[0] >= 0.0f,                 "t[0] >= 0");
+    if (n_pts > 1)
+        CHECK(out_times[n_pts - 1] > out_times[0], "timestamps increasing");
+
+    // Launch position ≈ origin ENU
+    float r0 = std::sqrt(out_pos[0]*out_pos[0]
+                       + out_pos[1]*out_pos[1]
+                       + out_pos[2]*out_pos[2]);
+    CHECK(r0 < 1.0f, "initial position ≈ origin");
+
+    // Peak altitude in position array must be > 5 km
+    float peak_z = 0.0f;
+    for (int i = 0; i < n_pts; ++i)
+        if (out_pos[i * 3 + 2] > peak_z)
+            peak_z = out_pos[i * 3 + 2];
+    CHECK(peak_z > 5000.0f, "peak z > 5 km in position array");
+
+    std::printf("  n_pts=%d, apogee=%.0f m, peak_z=%.0f m, t_end=%.1f s\n",
+                n_pts, apogee_m, (double)peak_z, (double)out_times[n_pts - 1]);
+}
+
 static void test_report_json() {
-    std::printf("[6/6] vsl_generate_report_json\n");
+    std::printf("[7/7] vsl_generate_report_json\n");
 
     static char json[65536];
     int rc = vsl_generate_report_json(
@@ -205,7 +267,7 @@ static void test_report_json() {
 // ── Main ──────────────────────────────────────────────────────────────────────
 
 int main() {
-    std::printf("=== VSL Phase 3 Integration Test ===\n");
+    std::printf("=== VSL Integration Test (7 tests) ===\n");
 
     jl_init();
 
@@ -218,12 +280,13 @@ int main() {
     }
     std::printf("  VSLSolver loaded OK\n\n");
 
-    test_propagate();        std::printf("\n");
-    test_eclipse();          std::printf("\n");
-    test_access();           std::printf("\n");
-    test_hohmann();          std::printf("\n");
-    test_trajectory_sixdof(); std::printf("\n");
-    test_report_json();      std::printf("\n");
+    test_propagate();                 std::printf("\n");
+    test_eclipse();                   std::printf("\n");
+    test_access();                    std::printf("\n");
+    test_hohmann();                   std::printf("\n");
+    test_trajectory_sixdof();         std::printf("\n");
+    test_trajectory_sixdof_points();  std::printf("\n");
+    test_report_json();               std::printf("\n");
 
     vsl_solver_shutdown();
     jl_atexit_hook(0);
