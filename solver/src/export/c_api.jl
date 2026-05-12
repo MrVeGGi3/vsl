@@ -25,78 +25,99 @@ Base.@ccallable function vsl_solver_shutdown()::Cvoid
     return nothing
 end
 
-"""
-    vsl_trajectory_sixdof — C-callable 6-DOF ballistic trajectory (vacuum mode)
+# ── C-struct mirrors (layout must match julia_api.h exactly) ──────────────────
 
-    Integrates a sounding rocket from t=0 to t_end_s under gravity only.
-    No thrust, no drag. Writes the 13-element final state to `out_state`.
+struct VslThrustCurveData
+    times       :: Ptr{Cdouble}
+    thrusts     :: Ptr{Cdouble}
+    mass_flows  :: Ptr{Cdouble}
+    mass_dry_kg :: Cdouble
+    mass_wet_kg :: Cdouble
+    n_points    :: Cint
+end
 
-    out_state layout: [x,y,z, vx,vy,vz, q0,q1,q2,q3, p,q,r]
-      positions in metres (ENU from launch site)
-      velocities in m/s
-      quaternion scalar-first, body→ENU
+struct VslAeroTableData
+    mach_grid :: Ptr{Cdouble}
+    aoa_grid  :: Ptr{Cdouble}
+    cd_table  :: Ptr{Cdouble}   # row-major n_mach × n_aoa
+    cn_table  :: Ptr{Cdouble}
+    s_ref_m2  :: Cdouble
+    xcp_m     :: Cdouble
+    xcg_m     :: Cdouble
+    n_mach    :: Cint
+    n_aoa     :: Cint
+end
 
-    Returns 0 on success, -1 on failure (check stderr for @error output).
-"""
+# Reads a C ThrustCurveData struct and constructs a Julia ThrustCurve.
+# copy() ensures Julia owns the data after C++ deallocates the struct.
+function _build_thrust_curve(ptr::Ptr{VslThrustCurveData})::ThrustCurve
+    d = unsafe_load(ptr)
+    n = Int(d.n_points)
+    ThrustCurve(
+        copy(unsafe_wrap(Array, d.times,      n)),
+        copy(unsafe_wrap(Array, d.thrusts,    n)),
+        copy(unsafe_wrap(Array, d.mass_flows, n)),
+        d.mass_wet_kg, d.mass_dry_kg,
+    )
+end
+
+# Reads a C AeroTableData struct and returns (AeroTable, s_ref, xcp, xcg).
+function _build_aero_table(ptr::Ptr{VslAeroTableData})
+    d  = unsafe_load(ptr)
+    nm = Int(d.n_mach); na = Int(d.n_aoa)
+    mach = copy(unsafe_wrap(Array, d.mach_grid, nm))
+    aoa  = copy(unsafe_wrap(Array, d.aoa_grid,  na))
+    cd   = reshape(copy(unsafe_wrap(Array, d.cd_table, nm * na)), nm, na)
+    cn   = reshape(copy(unsafe_wrap(Array, d.cn_table, nm * na)), nm, na)
+    AeroTable(mach, aoa, cd, cn), d.s_ref_m2, d.xcp_m, d.xcg_m
+end
+
+# ── 6-DOF trajectory C entry point ────────────────────────────────────────────
+
 Base.@ccallable function vsl_trajectory_sixdof(
     x0::Cdouble,  y0::Cdouble,  z0::Cdouble,
     vx0::Cdouble, vy0::Cdouble, vz0::Cdouble,
     q00::Cdouble, q10::Cdouble, q20::Cdouble, q30::Cdouble,
     p0::Cdouble,  qr0::Cdouble, r0::Cdouble,
-    mass_kg::Cdouble,
+    thrust_ptr::Ptr{VslThrustCurveData},
+    aero_ptr::Ptr{VslAeroTableData},
+    use_atmosphere::Cint,
     t_end_s::Cdouble,
-    out_state::Ptr{Cdouble},   # 13 Cdouble — final [x,y,z,vx,vy,vz,q0..q3,p,q,r]
-    out_apogee_m::Ptr{Cdouble}, # 1  Cdouble — peak altitude (m above launch site)
+    out_state::Ptr{Cdouble},    # 13 Cdouble — final [x,y,z,vx,vy,vz,q0..q3,p,q,r]
+    out_apogee_m::Ptr{Cdouble}, # 1  Cdouble — peak altitude (m above z0)
 )::Cint
     try
-        # Minimal no-thrust, no-drag ThrustCurve (constant dry mass)
-        tc = ThrustCurve(
-            [0.0, t_end_s],
-            [0.0, 0.0],
-            [0.0, 0.0],
-            mass_kg, mass_kg,
-        )
+        tc            = _build_thrust_curve(thrust_ptr)
+        at, s_ref, xcp, xcg = _build_aero_table(aero_ptr)
 
-        # Transparent AeroTable: 2×2 grid of zeros → no aerodynamic force
-        mach_g  = [0.0, 5.0]
-        aoa_g   = [0.0, 0.5]
-        at = AeroTable(mach_g, aoa_g, zeros(2, 2), zeros(2, 2))
-
-        I_diag = SMatrix{3,3,Float64,9}(diagm([1.0, 1.0, 1.0]))
-        I_inv  = SMatrix{3,3,Float64,9}(diagm([1.0, 1.0, 1.0]))
+        # Inertia for 80 mm × 1.2 m rocket (~8 kg wet): Ix=Iy≈0.96 kg·m², Iz≈0.006 kg·m²
+        I_diag = SMatrix{3,3,Float64,9}(diagm([0.96, 0.96, 0.006]))
+        I_inv  = SMatrix{3,3,Float64,9}(diagm([1.0/0.96, 1.0/0.96, 1.0/0.006]))
 
         p = SixDOFParams(
             tc, at, I_diag, I_inv,
-            1.0,       # S_ref — irrelevant in vacuum mode
-            1.0, 0.5,  # xcp, xcg — irrelevant in vacuum mode
-            2451545.0, # jd_epoch J2000
-            0.0, 0.0,  # lat0, lon0 (generic launch site)
-            0.0,       # launch_alt_m (sea level)
-            150.0, 150.0, 4.0,  # space weather indices
-            false,     # vacuum — no atmosphere
+            s_ref, xcp, xcg,
+            2451545.0,           # jd_epoch J2000
+            0.0, 0.0, 0.0,       # lat0_deg, lon0_deg, launch_alt_m (sea-level)
+            150.0, 150.0, 4.0,   # f107A, f107, ap (average solar activity)
+            use_atmosphere != 0,
             sixdof_cache(),
         )
 
-        u0 = [x0, y0, z0, vx0, vy0, vz0, q00, q10, q20, q30, p0, qr0, r0]
-        tspan = (0.0, t_end_s)
-        prob  = ODEProblem(sixdof!, u0, tspan, p)
-        sol   = solve(prob, Tsit5(); reltol=1e-8, abstol=1e-8, save_everystep=true)
+        u0   = [x0, y0, z0, vx0, vy0, vz0, q00, q10, q20, q30, p0, qr0, r0]
+        prob = ODEProblem(sixdof!, u0, (0.0, t_end_s), p)
+        sol  = solve(prob, Tsit5(); reltol=1e-8, abstol=1e-8, save_everystep=true)
 
         if sol.retcode != ReturnCode.Success
             @error "vsl_trajectory_sixdof: solver failed" retcode=sol.retcode
             return Cint(-1)
         end
 
-        # Write final state
         final = sol.u[end]
         for i in 1:13
             unsafe_store!(out_state, Cdouble(final[i]), i)
         end
-
-        # Peak altitude = maximum z component across all saved steps
-        apogee = maximum(u[3] for u in sol.u)
-        unsafe_store!(out_apogee_m, Cdouble(apogee))
-
+        unsafe_store!(out_apogee_m, Cdouble(maximum(u[3] for u in sol.u)))
         return Cint(0)
     catch e
         @error "vsl_trajectory_sixdof failed" exception=e

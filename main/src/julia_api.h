@@ -29,6 +29,31 @@ struct VslManeuverResult {
     float tof_s;
 };
 
+// Thrust curve data — pass by pointer to vsl_trajectory_sixdof.
+// Layout mirrors VslThrustCurveData in solver/src/export/c_api.jl.
+struct VslThrustCurveData {
+    const double* times;        // n_points timestamps (s), times[0] = 0
+    const double* thrusts;      // n_points thrust values (N)
+    const double* mass_flows;   // n_points mass-flow rates (kg/s)
+    double mass_dry_kg;
+    double mass_wet_kg;
+    int    n_points;
+};
+
+// Aerodynamic table — pass by pointer.
+// cd_table and cn_table are row-major (n_mach × n_aoa).
+struct VslAeroTableData {
+    const double* mach_grid;    // n_mach Mach numbers
+    const double* aoa_grid;     // n_aoa angles of attack (rad)
+    const double* cd_table;     // CD, row-major n_mach × n_aoa
+    const double* cn_table;     // CN, row-major n_mach × n_aoa
+    double s_ref_m2;            // reference area (m²)
+    double xcp_m;               // centre of pressure from nose (m, positive toward tail)
+    double xcg_m;               // centre of gravity from nose (m)
+    int    n_mach;
+    int    n_aoa;
+};
+
 extern "C" {
 
     // Load VSLSolver module. Call once after jl_init().
@@ -96,16 +121,22 @@ extern "C" {
         int         out_json_maxlen
     );
 
-    // 6-DOF ballistic trajectory (vacuum — no thrust, no drag).
-    // Initial state: position (m ENU), velocity (m/s), quaternion scalar-first, angular rate (rad/s).
-    // out_state: 13 doubles — final [x,y,z, vx,vy,vz, q0..q3, p,q,r]
-    // out_apogee_m: peak z altitude (m above launch site z0)
+    // 6-DOF sounding rocket trajectory with propulsion and aerodynamics.
+    // Initial state: position (m ENU from launch site), velocity (m/s),
+    //   quaternion body→ENU scalar-first, angular rate (rad/s body frame).
+    // thrust:          propulsion data (ThrustCurve + mass).
+    // aero:            aerodynamic table (CD/CN bilinear + S_ref, xcp, xcg).
+    // use_atmosphere:  1 = NRLMSISE-00 drag/torque active, 0 = vacuum.
+    // out_state:       13 doubles — final [x,y,z, vx,vy,vz, q0..q3, p,q,r].
+    // out_apogee_m:    peak z altitude (m above launch site).
     int vsl_trajectory_sixdof(
         double x0,   double y0,   double z0,
         double vx0,  double vy0,  double vz0,
         double q00,  double q10,  double q20,  double q30,
         double p0,   double qr0,  double r0,
-        double mass_kg,
+        const VslThrustCurveData* thrust,
+        const VslAeroTableData*   aero,
+        int                       use_atmosphere,
         double t_end_s,
         double* out_state,
         double* out_apogee_m

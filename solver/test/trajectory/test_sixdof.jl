@@ -260,3 +260,99 @@ end
     # Signs must be opposite
     @test sign(du_stable[12]) != sign(du_unstable[12])
 end
+
+# ── Case 6: C API builders — round-trip from C structs ───────────────────────
+@testset "C API builders — VslThrustCurveData / VslAeroTableData" begin
+
+    @testset "_build_thrust_curve round-trip" begin
+        tc_times  = [0.0, 3.0, 3.05]
+        tc_forces = [2000.0, 2000.0, 0.0]
+        tc_mdots  = [0.60,   0.60,   0.0]
+        m_wet = 8.0; m_dry = 6.2
+
+        c_tc = Ref(VslThrustCurveData(
+            pointer(tc_times), pointer(tc_forces), pointer(tc_mdots),
+            m_dry, m_wet, Cint(3),
+        ))
+        tc = GC.@preserve tc_times tc_forces tc_mdots c_tc begin
+            VSLSolver._build_thrust_curve(
+                Base.unsafe_convert(Ptr{VslThrustCurveData}, c_tc))
+        end
+
+        # At t=0: full wet mass, thrust starts from 0 (ramp)
+        F0, m0 = thrust_at(tc, 0.0)
+        @test F0 ≈ 2000.0
+        @test m0 ≈ m_wet
+
+        # After burnout (t=10s): dry mass, no thrust
+        F_end, m_end = thrust_at(tc, 10.0)
+        @test F_end == 0.0
+        @test m_end ≈ m_dry
+    end
+
+    @testset "_build_aero_table round-trip" begin
+        mach_g = [0.0, 0.5, 1.5]
+        aoa_g  = [0.0, 0.0873, 0.1745]
+        cd     = [0.70, 0.70, 0.70, 0.55, 0.58, 0.65, 0.45, 0.48, 0.55]  # 3×3 row-major
+        cn     = [0.0,  0.20, 0.40, 0.0,  0.22, 0.44, 0.0,  0.18, 0.36]
+
+        c_at = Ref(VslAeroTableData(
+            pointer(mach_g), pointer(aoa_g), pointer(cd), pointer(cn),
+            0.00503, 0.85, 0.55, Cint(3), Cint(3),
+        ))
+        at, s_ref, xcp, xcg = GC.@preserve mach_g aoa_g cd cn c_at begin
+            VSLSolver._build_aero_table(
+                Base.unsafe_convert(Ptr{VslAeroTableData}, c_at))
+        end
+
+        @test s_ref ≈ 0.00503
+        @test xcp   ≈ 0.85
+        @test xcg   ≈ 0.55
+
+        # At AoA=0: no lateral force (symmetry)
+        F = aero_forces(at, 0.5, 0.0, 1000.0, s_ref)
+        @test F[2] == 0.0
+
+        # CD at Mach=0, AoA=0 should be 0.70 (first table entry)
+        F_z = aero_forces(at, 0.0, 0.0, 1000.0, s_ref)
+        @test F_z[3] ≈ -0.70 * 1000.0 * s_ref
+    end
+
+    @testset "propulsion raises apogee vs vacuum ballistic" begin
+        # Vacuum ballistic: 500 m/s upward, no thrust, no drag
+        p_vacuum = _identity_params(; m0=6.2, use_atmosphere=false)
+        u0_500 = _initial_state_vertical(; vz0=500.0)
+
+        prob_v = ODEProblem(sixdof!, u0_500, (0.0, 80.0), p_vacuum)
+        sol_v  = solve(prob_v, Tsit5(); reltol=1e-8, abstol=1e-8, save_everystep=true)
+        apogee_vacuum = maximum(u[3] for u in sol_v.u)
+
+        # With N-class thrust from ground (v0=0): motor accelerates from rest
+        tc_times  = [0.0, 0.1, 3.0, 3.05]
+        tc_forces = [0.0, 2100.0, 1800.0, 0.0]
+        tc_mdots  = [0.0, 0.60,   0.55,   0.0]
+        mach_g = [0.0, 5.0]; aoa_g = [0.0, 0.5]
+
+        tc_motor = ThrustCurve(tc_times, tc_forces, tc_mdots, 8.0, 6.2)
+        at_zero  = AeroTable(mach_g, aoa_g, zeros(2,2), zeros(2,2))
+
+        I_diag = SMatrix{3,3,Float64,9}(diagm([0.96, 0.96, 0.006]))
+        I_inv  = SMatrix{3,3,Float64,9}(diagm([1/0.96, 1/0.96, 1/0.006]))
+
+        p_motor = SixDOFParams(
+            tc_motor, at_zero, I_diag, I_inv,
+            0.00503, 0.85, 0.55,
+            2451545.0, 0.0, 0.0, 0.0,
+            150.0, 150.0, 4.0, false,
+            sixdof_cache(),
+        )
+        u0_rest = _initial_state_vertical(; vz0=0.0)
+        prob_m  = ODEProblem(sixdof!, u0_rest, (0.0, 80.0), p_motor)
+        sol_m   = solve(prob_m, Tsit5(); reltol=1e-8, abstol=1e-8, save_everystep=true)
+        apogee_motor = maximum(u[3] for u in sol_m.u)
+
+        # N-class motor adds ~6 kN·s from ground: apogee must be significantly higher
+        @test apogee_motor > apogee_vacuum
+        @test apogee_motor > 5_000.0  # > 5 km for N-class from ground
+    end
+end

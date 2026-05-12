@@ -39,5 +39,6 @@ export ThrustCurve, thrust_at
 export AtmosphereState, nrlmsise00_at
 export AeroTable, aero_forces
 export SixDOFCache, SixDOFParams, sixdof!, sixdof_cache
+export VslThrustCurveData, VslAeroTableData
 
 end # module VSLSolver

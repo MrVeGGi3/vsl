@@ -23,15 +23,34 @@ static constexpr const char* ISS_L1 =
 static constexpr const char* ISS_L2 =
     "2 25544  51.6416 247.4627 0006703 130.5360 325.0288 15.49507896 12343";
 
-// Sounding rocket IC — ballistic coast phase (post-burnout, vacuum, vertical).
-// Represents a 30-kg rocket at burnout: 100 m altitude, 500 m/s upward.
-// Quaternion (1,0,0,0) = no rotation from ENU frame; ω = 0.
-static constexpr double ROCKET_X0    =   0.0;   // m ENU east
-static constexpr double ROCKET_Y0    =   0.0;   // m ENU north
-static constexpr double ROCKET_Z0    = 100.0;   // m ENU up (burnout altitude)
-static constexpr double ROCKET_VZ0   = 500.0;   // m/s upward
-static constexpr double ROCKET_MASS  =  30.0;   // kg dry mass
-static constexpr double ROCKET_TEND  = 120.0;   // s — covers coast to apogee (~12.8 km)
+// Demo rocket: N-class solid motor, 80 mm airframe, 1.2 m long.
+// Launched from rest at ground level; motor fires at t=0.
+// Simulates 120 s: burn (~3 s) + coast to apogee + start of descent.
+
+// Thrust curve: simplified Cesaroni N-class (4-point approximation)
+static constexpr double ROCKET_TC_TIMES[]  = {0.0, 0.1,    3.0,    3.05};  // s
+static constexpr double ROCKET_TC_FORCES[] = {0.0, 2100.0, 1800.0, 0.0};   // N
+static constexpr double ROCKET_TC_MDOTS[]  = {0.0, 0.60,   0.55,   0.0};   // kg/s
+static constexpr double ROCKET_MASS_DRY    = 6.2;   // kg
+static constexpr double ROCKET_MASS_WET    = 8.0;   // kg
+
+// Aerodynamic table: mach=[0, 0.5, 1.5], aoa=[0, 5°, 10°] in radians
+static constexpr double ROCKET_AERO_MACH[] = {0.0, 0.5, 1.5};
+static constexpr double ROCKET_AERO_AOA[]  = {0.0, 0.0873, 0.1745};       // rad
+static constexpr double ROCKET_AERO_CD[]   = {                             // row-major 3×3
+    0.70, 0.70, 0.70,   // Mach 0.0
+    0.55, 0.58, 0.65,   // Mach 0.5
+    0.45, 0.48, 0.55,   // Mach 1.5
+};
+static constexpr double ROCKET_AERO_CN[]   = {
+    0.0,  0.20, 0.40,
+    0.0,  0.22, 0.44,
+    0.0,  0.18, 0.36,
+};
+static constexpr double ROCKET_S_REF   = 0.00503;  // m²  (π × 0.04²)
+static constexpr double ROCKET_XCP     = 0.85;     // m from nose — CP aft of CG → stable
+static constexpr double ROCKET_XCG     = 0.55;     // m from nose
+static constexpr double ROCKET_TEND    = 120.0;    // s simulation duration
 
 // ── RAII — Julia runtime ──────────────────────────────────────────────────────
 
@@ -82,12 +101,24 @@ static void solver_update_orbit() {
 static void solver_update_trajectory() {
     auto& buf = g_trajectory_buffer.back();
 
+    VslThrustCurveData thrust{
+        ROCKET_TC_TIMES, ROCKET_TC_FORCES, ROCKET_TC_MDOTS,
+        ROCKET_MASS_DRY, ROCKET_MASS_WET,
+        4,  // n_points
+    };
+    VslAeroTableData aero{
+        ROCKET_AERO_MACH, ROCKET_AERO_AOA, ROCKET_AERO_CD, ROCKET_AERO_CN,
+        ROCKET_S_REF, ROCKET_XCP, ROCKET_XCG,
+        3, 3,  // n_mach, n_aoa
+    };
+
     int rc = vsl_trajectory_sixdof(
-        ROCKET_X0, ROCKET_Y0, ROCKET_Z0,
-        0.0, 0.0, ROCKET_VZ0,          // vx=0, vy=0, vz=500 m/s
-        1.0, 0.0, 0.0, 0.0,            // quaternion — vertical
-        0.0, 0.0, 0.0,                  // zero angular rate
-        ROCKET_MASS, ROCKET_TEND,
+        0.0, 0.0, 0.0,          // position — launch from pad (ground level)
+        0.0, 0.0, 0.0,          // velocity — at rest (motor fires at t=0)
+        1.0, 0.0, 0.0, 0.0,    // quaternion — vertical, no rotation
+        0.0, 0.0, 0.0,          // angular rate — zero
+        &thrust, &aero, 1,      // propulsion, aerodynamics, use NRLMSISE-00
+        ROCKET_TEND,
         buf.final_state, &buf.apogee_m
     );
 
