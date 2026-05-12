@@ -13,8 +13,9 @@
 
 // ── Globals ───────────────────────────────────────────────────────────────────
 
-static std::atomic<bool> g_running{true};
-static DoubleBuffer       g_orbit_buffer;
+static std::atomic<bool>      g_running{true};
+static DoubleBuffer            g_orbit_buffer;
+static TrajectoryDoubleBuffer  g_trajectory_buffer;
 
 // ISS reference TLE — replaced by UI input in Phase 3
 static constexpr const char* ISS_L1 =
@@ -22,11 +23,43 @@ static constexpr const char* ISS_L1 =
 static constexpr const char* ISS_L2 =
     "2 25544  51.6416 247.4627 0006703 130.5360 325.0288 15.49507896 12343";
 
+// Demo rocket: N-class solid motor, 80 mm airframe, 1.2 m long.
+// Launched from rest at ground level; motor fires at t=0.
+// Simulates 120 s: burn (~3 s) + coast to apogee + start of descent.
+
+// Thrust curve: simplified Cesaroni N-class (4-point approximation)
+static constexpr double ROCKET_TC_TIMES[]  = {0.0, 0.1,    3.0,    3.05};  // s
+static constexpr double ROCKET_TC_FORCES[] = {0.0, 2100.0, 1800.0, 0.0};   // N
+static constexpr double ROCKET_TC_MDOTS[]  = {0.0, 0.60,   0.55,   0.0};   // kg/s
+static constexpr double ROCKET_MASS_DRY    = 6.2;   // kg
+static constexpr double ROCKET_MASS_WET    = 8.0;   // kg
+
+// Aerodynamic table: mach=[0, 0.5, 1.5], aoa=[0, 5°, 10°] in radians
+static constexpr double ROCKET_AERO_MACH[] = {0.0, 0.5, 1.5};
+static constexpr double ROCKET_AERO_AOA[]  = {0.0, 0.0873, 0.1745};       // rad
+static constexpr double ROCKET_AERO_CD[]   = {                             // row-major 3×3
+    0.70, 0.70, 0.70,   // Mach 0.0
+    0.55, 0.58, 0.65,   // Mach 0.5
+    0.45, 0.48, 0.55,   // Mach 1.5
+};
+static constexpr double ROCKET_AERO_CN[]   = {
+    0.0,  0.20, 0.40,
+    0.0,  0.22, 0.44,
+    0.0,  0.18, 0.36,
+};
+static constexpr double ROCKET_S_REF   = 0.00503;  // m²  (π × 0.04²)
+static constexpr double ROCKET_XCP     = 0.85;     // m from nose — CP aft of CG → stable
+static constexpr double ROCKET_XCG     = 0.55;     // m from nose
+static constexpr double ROCKET_TEND    = 120.0;    // s simulation duration
+
 // ── RAII — Julia runtime ──────────────────────────────────────────────────────
 
 struct JuliaRuntime {
     explicit JuliaRuntime(const char* sysimage) {
-        jl_init();
+        if (sysimage && sysimage[0])
+            jl_init_with_image(VSL_JULIA_BINDIR, sysimage);
+        else
+            jl_init();
         if (vsl_solver_init(sysimage) != 0)
             std::fprintf(stderr,
                 "[vsl] WARNING: vsl_solver_init failed\n");
@@ -63,6 +96,45 @@ static void solver_update_orbit() {
         g_orbit_buffer.swap();
     } else {
         std::fprintf(stderr, "[vsl] vsl_propagate_orbit error: %d\n", rc);
+    }
+}
+
+// ── Solver — trajectory ───────────────────────────────────────────────────────
+
+static void solver_update_trajectory() {
+    auto& buf = g_trajectory_buffer.back();
+
+    VslThrustCurveData thrust{
+        ROCKET_TC_TIMES, ROCKET_TC_FORCES, ROCKET_TC_MDOTS,
+        ROCKET_MASS_DRY, ROCKET_MASS_WET,
+        4,  // n_points
+    };
+    VslAeroTableData aero{
+        ROCKET_AERO_MACH, ROCKET_AERO_AOA, ROCKET_AERO_CD, ROCKET_AERO_CN,
+        ROCKET_S_REF, ROCKET_XCP, ROCKET_XCG,
+        3, 3,  // n_mach, n_aoa
+    };
+
+    int rc = vsl_trajectory_sixdof_points(
+        0.0, 0.0, 0.0,          // position — launch from pad (ground level)
+        0.0, 0.0, 0.0,          // velocity — at rest (motor fires at t=0)
+        1.0, 0.0, 0.0, 0.0,    // quaternion — vertical, no rotation
+        0.0, 0.0, 0.0,          // angular rate — zero
+        &thrust, &aero, 1,      // propulsion, aerodynamics, use NRLMSISE-00
+        ROCKET_TEND,
+        buf.final_state, &buf.apogee_m,
+        buf.times.data(), buf.positions.data(), &buf.point_count,
+        MAX_TRAJ_POINTS
+    );
+
+    if (rc == 0) {
+        buf.valid = 1;
+        buf.frame_id++;
+        g_trajectory_buffer.swap();
+        std::fprintf(stderr, "[vsl] trajectory: apogee %.0f m, %d pts\n",
+                     buf.apogee_m, buf.point_count);
+    } else {
+        std::fprintf(stderr, "[vsl] vsl_trajectory_sixdof_points error: %d\n", rc);
     }
 }
 
@@ -143,6 +215,30 @@ static void write_solver_json(const char* project_path) {
         if (i > 0) std::fputc(',', f);
         std::fprintf(f, "%.3f", (double)pos[i]);
     }
+    std::fprintf(f, "],\n");
+
+    auto& trj = g_trajectory_buffer.front();
+    std::fprintf(f, "  \"trajectory_apogee_m\": %.1f,\n", trj.apogee_m);
+    std::fprintf(f, "  \"trajectory_point_count\": %d,\n", trj.point_count);
+    std::fprintf(f, "  \"trajectory_final_state\": [");
+    for (int i = 0; i < 13; ++i) {
+        if (i > 0) std::fputc(',', f);
+        std::fprintf(f, "%.6f", trj.final_state[i]);
+    }
+    std::fprintf(f, "],\n");
+
+    std::fprintf(f, "  \"trajectory_times\": [");
+    for (int i = 0; i < trj.point_count; ++i) {
+        if (i > 0) std::fputc(',', f);
+        std::fprintf(f, "%.3f", (double)trj.times[i]);
+    }
+    std::fprintf(f, "],\n");
+
+    std::fprintf(f, "  \"trajectory_positions_flat\": [");
+    for (int i = 0; i < trj.point_count * 3; ++i) {
+        if (i > 0) std::fputc(',', f);
+        std::fprintf(f, "%.2f", (double)trj.positions[i]);
+    }
     std::fprintf(f, "]\n}\n");
 
     std::fclose(f);
@@ -167,8 +263,9 @@ int main(int argc, char* argv[]) {
     // 1. Initialize Julia on main thread
     JuliaRuntime julia{sysimage};
 
-    // 2. Pre-populate orbit buffer and run full analysis before first frame
+    // 2. Pre-populate buffers and run full analysis before first frame
     solver_update_orbit();
+    solver_update_trajectory();
     write_solver_json(project_path);
 
     // 3. Initialize LibGodot

@@ -26,8 +26,10 @@ func _load_results() -> void:
 		return
 	_data   = json.get_data()
 	_loaded = true
-	print("[SolverBridge] loaded: %d orbit pts, %d access wins" % [
+	print("[SolverBridge] loaded: orbit=%d pts, traj=%d pts (apogee %.0f m), access=%d wins" % [
 		int(_data.get("point_count", 0)),
+		int(_data.get("trajectory_point_count", 0)),
+		float(_data.get("trajectory_apogee_m", 0.0)),
 		(_data.get("access_windows", []) as Array).size()
 	])
 
@@ -104,6 +106,56 @@ func compute_hohmann(r1_km: float, r2_km: float) -> Dictionary:
 		"dv1_kms": vp - v1,
 		"dv2_kms": v2 - va,
 		"tof_s":   PI * sqrt(a_t * a_t * a_t / MU),
+	}
+
+# ── Trajectory API ─────────────────────────────────────────────────────────────
+
+func get_trajectory_point_count() -> int:
+	return int(_data.get("trajectory_point_count", 0))
+
+func get_trajectory_apogee_m() -> float:
+	return float(_data.get("trajectory_apogee_m", 0.0))
+
+# Fills arr with ENU positions converted to Godot Y-up:
+#   Vector3(East, Up, -North)  — .y gives altitude in metres.
+func copy_trajectory_positions_to(arr: PackedVector3Array, count: int) -> void:
+	if not _loaded:
+		return
+	var flat: Array = _data.get("trajectory_positions_flat", [])
+	var n := mini(count, flat.size() / 3)
+	for i in n:
+		arr[i] = Vector3(
+			float(flat[i * 3]),
+			float(flat[i * 3 + 2]),   # ENU Up  → Godot Y
+			-float(flat[i * 3 + 1])   # ENU North → Godot -Z
+		)
+
+func get_trajectory_times() -> PackedFloat32Array:
+	if not _loaded:
+		return PackedFloat32Array()
+	return PackedFloat32Array(_data.get("trajectory_times", []) as Array)
+
+func get_trajectory_summary() -> Dictionary:
+	if not _loaded:
+		return {}
+	return {
+		"apogee_m":               float(_data.get("trajectory_apogee_m",        0.0)),
+		"apogee_time_s":          float(_data.get("apogee_time_s",               0.0)),
+		"landing_time_s":         float(_data.get("landing_time_s",              0.0)),
+		"range_m":                float(_data.get("range_m",                     0.0)),
+		"max_velocity_mps":       float(_data.get("max_velocity_mps",            0.0)),
+		"max_velocity_mach":      float(_data.get("max_velocity_mach",           0.0)),
+		"max_q_pa":               float(_data.get("max_q_pa",                    0.0)),
+		"max_q_altitude_m":       float(_data.get("max_q_altitude_m",            0.0)),
+		"max_q_mach":             float(_data.get("max_q_mach",                  0.0)),
+		"max_q_time_s":           float(_data.get("max_q_time_s",                0.0)),
+		"burnout_time_s":         float(_data.get("burnout_time_s",              0.0)),
+		"burnout_altitude_m":     float(_data.get("burnout_altitude_m",          0.0)),
+		"burnout_velocity_mps":   float(_data.get("burnout_velocity_mps",        0.0)),
+		"propellant_mass_kg":     float(_data.get("propellant_mass_kg",          0.0)),
+		"total_impulse_ns":       float(_data.get("total_impulse_ns",            0.0)),
+		"max_aoa_deg":            float(_data.get("max_aoa_deg",                 0.0)),
+		"max_angular_rate_rad_s": float(_data.get("max_angular_rate_rad_s",      0.0)),
 	}
 
 func export_report_json(user_path: String) -> void:

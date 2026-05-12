@@ -1,0 +1,6 @@
+[gd_scene format=3 uid="uid://trajectory_panel"]
+
+[ext_resource type="Script" path="res://scripts/trajectory_panel.gd" id="1"]
+
+[node name="TrajectoryPanel" type="Control"]
+script = ExtResource("1")

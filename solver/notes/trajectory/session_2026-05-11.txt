@@ -1,0 +1,171 @@
+Session Report — sounding-rocket branch
+Date: 2026-05-11
+Branch: sounding-rocket (base commit: 8561fbe)
+
+================================================================================
+OVERVIEW
+================================================================================
+
+Three improvements were made to the 6-DOF sounding rocket trajectory module
+introduced in the previous session. All 112 tests pass (up from 89).
+
+Files changed:
+  solver/src/export/c_api.jl            (+82 lines)
+  solver/src/trajectory/sixdof.jl       (+13 / -4 lines)
+  solver/test/trajectory/test_sixdof.jl (+130 lines)
+
+================================================================================
+STEP 1 — TEST COVERAGE (test_sixdof.jl)
+================================================================================
+
+Added two new @testset blocks covering subsystems that were previously untested.
+
+--- ThrustCurve (Case 3) ---
+Tests:
+  - thrust_at(tc, -1.0) == (0.0, m0)          before burn: no thrust, full mass
+  - thrust_at(tc, 0.0) == (0.0, 100.0)         at t=0
+  - thrust_at(tc, 2.5) == (500.0, 87.5)        mid-ramp: linear interpolation
+  - thrust_at(tc, 5.0) == (1000.0, 75.0)       peak: trapezoid mass integration
+  - thrust_at(tc, 15.0) == (0.0, 50.0)         after burnout: dry mass returned
+  - @allocated thrust_at(tc, 5.0) == 0          zero-alloc guarantee
+
+Known thrust/mass profile used:
+  times     = [0.0, 5.0, 10.0]
+  thrusts   = [0.0, 1000.0, 0.0] N
+  mass_flow = [5.0, 5.0, 0.0] kg/s
+  m0=100 kg, m_dry=50 kg
+
+Mass at each node (trapezoid rule):
+  t=0:  100.0 kg
+  t=5:  100 - (5+5)/2 * 5 = 75.0 kg
+  t=10: 75  - (5+0)/2 * 5 = 62.5 kg  → clamped to m_dry=50 at burnout check
+
+--- AeroTable (Case 4) ---
+Tests:
+  - At AoA=0: Fy=0 (symmetry), Fx=0, Fz=-CD*q*S
+  - At Mach=2, AoA=0: Fz = -0.5 * q_dyn * S_ref
+  - AoA=0 always gives Fy=0 across multiple Mach values
+  - @allocated aero_forces(...) == 0
+
+2×2 grid: mach=[0,2], aoa=[0, π/4], CD=[[0.3,0.4],[0.5,0.6]], CN=[[0,0.8],[0,1.2]]
+
+At AoA=0: Fx = (-CD*sin(0) + CN*cos(0)) * qS = CN*qS = 0 (since CN[Mach,0]=0)
+           Fz = (-CD*cos(0) - CN*sin(0)) * qS = -CD*qS
+
+Also updated _identity_params helper to include xcp/xcg fields added in Step 2.
+
+================================================================================
+STEP 2 — FIN-INDUCED RESTORING TORQUE (sixdof.jl)
+================================================================================
+
+--- New fields in SixDOFParams ---
+  xcp::Float64  — center of pressure from nose (m, positive toward tail)
+  xcg::Float64  — center of gravity from nose (m, positive toward tail)
+
+Stability convention: xcp > xcg → CP aft of CG → fin-stabilized → stable
+
+--- Torque model ---
+Aerodynamic pitch/yaw restoring moment (body y-axis, acts in xz plane):
+
+  τ_y = CN(Mach, AoA) · (xcg − xcp) · q_dyn · S_ref
+
+Sign analysis:
+  Stable (xcp > xcg):   xcg−xcp < 0, CN>0, q_dyn>0 → τ_y < 0 (restoring)
+  Unstable (xcp < xcg): xcg−xcp > 0              → τ_y > 0 (destabilizing)
+
+Rotational EOM updated:
+  Before: dω = I⁻¹ · (−ω × Iω)           [τ=0]
+  After:  dω = I⁻¹ · (τ_aero − ω × Iω)   [τ_aero = SVector(0, τ_y, 0)]
+
+The torque is zero in vacuum mode (use_atmosphere=false) — zero-alloc preserved.
+
+--- Type-stability fix ---
+SixDOFParams was made generic: SixDOFParams{IT} where IT is the interpolator
+type of AeroTable{IT}. Previously, the aero_table field was typed as the
+abstract AeroTable (no type parameter), causing _itp_CN to have unknown return
+type → τ_aero_y inferred as Any → SVector(0.0, Any, 0.0) heap-allocated.
+
+Making SixDOFParams{IT} preserves the interpolator type through the struct,
+allowing sixdof! to specialize fully and keep zero-alloc in vacuum mode.
+
+Result: 0 allocations in vacuum mode confirmed (was 320 bytes before fix).
+
+--- Stability test (Case 5) ---
+Direct sign check on the ODE RHS output — more reliable than integration:
+
+  State: 5° pitch perturbation (body y-axis rotation), 200 m/s upward, sea level
+  Stable   config (xcp=2.0, xcg=1.0): du[12] = dω_y < 0  ✓ restoring
+  Unstable config (xcp=0.5, xcg=1.5): du[12] = dω_y > 0  ✓ destabilizing
+  sign(stable) ≠ sign(unstable)                            ✓
+
+The integration-based test (comparing q1 at t=30s) was discarded because at
+80 km altitude the atmosphere is too thin (~1.7e-5 kg/m³) to produce a
+measurable difference in 30 seconds. The single-call torque sign test is
+deterministic and O(ms) fast.
+
+================================================================================
+STEP 3 — C API EXPORT (c_api.jl)
+================================================================================
+
+Added vsl_trajectory_sixdof() — callable from the C++17 main process via
+libjulia. This is the first trajectory function in the C interface.
+
+Signature:
+  Base.@ccallable function vsl_trajectory_sixdof(
+      x0, y0, z0        :: Cdouble,   # ENU position (m)
+      vx0, vy0, vz0     :: Cdouble,   # ENU velocity (m/s)
+      q00, q10, q20, q30 :: Cdouble,  # quaternion body→ENU, scalar-first
+      p0, qr0, r0       :: Cdouble,   # angular velocity (rad/s, body frame)
+      mass_kg           :: Cdouble,   # vehicle mass (kg)
+      t_end_s           :: Cdouble,   # integration duration (s)
+      out_state         :: Ptr{Cdouble},    # 13 elements — final state
+      out_apogee_m      :: Ptr{Cdouble},   # 1 element — peak altitude (m)
+  )::Cint
+
+Behavior (current — vacuum ballistic only):
+  - Constructs a no-thrust ThrustCurve (constant mass = mass_kg)
+  - Constructs a zero-coefficient AeroTable (no drag, no lift)
+  - Integrates with Tsit5 (reltol=1e-8, abstol=1e-8)
+  - Writes final 13-element state to out_state
+  - Computes apogee as max(z) over all saved steps, writes to out_apogee_m
+  - Returns 0 on success, -1 on failure (exception logged via @error)
+
+Limitations (future work):
+  - No propulsion input from C (thrust curve must be wired in)
+  - No atmosphere input from C (use_atmosphere hardcoded to false)
+  - No aerodynamic table input from C
+
+================================================================================
+TEST SUMMARY
+================================================================================
+
+Before session: 89 tests (17.7s)
+After session:  112 tests (16.3s)
+New tests:       23
+
+Breakdown of new tests:
+  ThrustCurve — interpolation and mass integration :  11
+  AeroTable — bilinear lookup and zero allocation  :   9
+  6DOF aerodynamic stability — pitch torque sign   :   3
+
+All 112 tests pass on Julia 1.12.6, branch sounding-rocket.
+
+================================================================================
+ARCHITECTURE NOTES
+================================================================================
+
+The SixDOFParams{IT} type parameter is transparent to users — Julia infers IT
+automatically from the AeroTable passed to the constructor. Existing call sites
+require no changes; the compiler specializes sixdof! for each concrete IT.
+
+The torque model is limited to the xz-plane (2-D AoA). Roll torque (τ_x) and
+spin stabilization are not modeled. For guided flight or fin-induced roll, the
+model will need extension.
+
+The C API vsl_trajectory_sixdof is a first step toward embedding the trajectory
+solver in the C++/LibGodot main process. Full integration requires:
+  1. Sysimage compilation via PackageCompiler (Phase 3)
+  2. Propulsion + aerodynamic table marshalling from C structs
+  3. Callback or polling mechanism for real-time visualization
+
+================================================================================
