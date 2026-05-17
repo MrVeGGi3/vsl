@@ -117,6 +117,39 @@
 		"xcg_m": 0.55,
 		"xcp_m": 0.85
 	},
+	"obdh": {
+		"data_rate_kbps": 100.0,
+		"mass_kg": 0.5,
+		"power_avg_w": 3.0,
+		"processor": "STM32H7",
+		"storage_mb": 128.0
+	},
+	"power": {
+		"actuators_w": 0.5,
+		"battery_capacity_wh": 20.0,
+		"battery_mass_kg": 0.3,
+		"consumers": {
+			"actuators_w": 0.5,
+			"obdh_w": 3.0,
+			"payload_w": 5.0,
+			"ttc_w": 2.0
+		}
+	},
+	"thermal": {
+		"emissivity": 0.15,
+		"material": "aluminum_6061",
+		"temp_max_structural_c": 130.0,
+		"temp_min_structural_c": -40.0,
+		"wall_thickness_mm": 2.0
+	},
+	"ttc": {
+		"freq_mhz": 433.0,
+		"range_km": 50.0,
+		"rx_gain_dbi": 6.0,
+		"system_losses_db": 3.0,
+		"tx_gain_dbi": 0.0,
+		"tx_power_w": 1.0
+	},
 	"simulation": {
 		"initial_state": {
 			"angular_rate_rad_s": [

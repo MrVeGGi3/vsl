@@ -11,6 +11,13 @@
 [ext_resource type="PackedScene" path="res://scenes/trajectory_panel.tscn" id="9"]
 [ext_resource type="PackedScene" path="res://scenes/mission_design_panel.tscn" id="10"]
 [ext_resource type="PackedScene" path="res://scenes/rocket_design_panel.tscn" id="11"]
+[ext_resource type="PackedScene" path="res://scenes/payload_panel.tscn" id="12"]
+[ext_resource type="PackedScene" path="res://scenes/control_panel.tscn" id="13"]
+[ext_resource type="PackedScene" path="res://scenes/obdh_panel.tscn" id="14"]
+[ext_resource type="PackedScene" path="res://scenes/ttc_panel.tscn" id="15"]
+[ext_resource type="PackedScene" path="res://scenes/power_panel.tscn" id="16"]
+[ext_resource type="PackedScene" path="res://scenes/thermal_panel.tscn" id="17"]
+[ext_resource type="PackedScene" path="res://scenes/budget_panel.tscn" id="18"]
 
 [node name="Main" type="Node3D" unique_id=1669414694]
 script = ExtResource("1")
@@ -66,3 +73,24 @@ anchors_preset = 0
 [node name="MissionDesignPanel" parent="UILayer" unique_id=111111101 instance=ExtResource("10")]
 
 [node name="RocketDesignPanel" parent="UILayer" unique_id=111111102 instance=ExtResource("11")]
+
+[node name="PayloadPanel" parent="UILayer" unique_id=111111103 instance=ExtResource("12")]
+visible = false
+
+[node name="ControlPanel" parent="UILayer" unique_id=111111104 instance=ExtResource("13")]
+visible = false
+
+[node name="ObdhPanel" parent="UILayer" unique_id=111111105 instance=ExtResource("14")]
+visible = false
+
+[node name="TtcPanel" parent="UILayer" unique_id=111111106 instance=ExtResource("15")]
+visible = false
+
+[node name="PowerPanel" parent="UILayer" unique_id=111111107 instance=ExtResource("16")]
+visible = false
+
+[node name="ThermalPanel" parent="UILayer" unique_id=111111108 instance=ExtResource("17")]
+visible = false
+
+[node name="BudgetPanel" parent="UILayer" unique_id=111111109 instance=ExtResource("18")]
+visible = false

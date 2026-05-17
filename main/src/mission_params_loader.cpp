@@ -148,6 +148,51 @@ bool load_mission_params(const std::string& path, VslMissionParams& p) {
         }
     }
 
+    // obdh
+    if (j.contains("obdh")) {
+        auto& o = j["obdh"];
+        if (o.contains("mass_kg"))        p.obdh.mass_kg        = o["mass_kg"];
+        if (o.contains("power_avg_w"))    p.obdh.power_avg_w    = o["power_avg_w"];
+        if (o.contains("data_rate_kbps")) p.obdh.data_rate_kbps = o["data_rate_kbps"];
+        if (o.contains("storage_mb"))     p.obdh.storage_mb     = o["storage_mb"];
+        if (o.contains("processor"))      p.obdh.processor      = o["processor"].get<std::string>();
+    }
+
+    // ttc
+    if (j.contains("ttc")) {
+        auto& t = j["ttc"];
+        if (t.contains("freq_mhz"))         p.ttc.freq_mhz         = t["freq_mhz"];
+        if (t.contains("tx_power_w"))       p.ttc.tx_power_w       = t["tx_power_w"];
+        if (t.contains("tx_gain_dbi"))      p.ttc.tx_gain_dbi      = t["tx_gain_dbi"];
+        if (t.contains("rx_gain_dbi"))      p.ttc.rx_gain_dbi      = t["rx_gain_dbi"];
+        if (t.contains("system_losses_db")) p.ttc.system_losses_db = t["system_losses_db"];
+        if (t.contains("range_km"))         p.ttc.range_km         = t["range_km"];
+    }
+
+    // power
+    if (j.contains("power")) {
+        auto& pw = j["power"];
+        if (pw.contains("battery_capacity_wh")) p.power.battery_capacity_wh = pw["battery_capacity_wh"];
+        if (pw.contains("battery_mass_kg"))     p.power.battery_mass_kg     = pw["battery_mass_kg"];
+        if (pw.contains("consumers")) {
+            auto& c = pw["consumers"];
+            if (c.contains("payload_w"))   p.power.payload_w   = c["payload_w"];
+            if (c.contains("obdh_w"))      p.power.obdh_w      = c["obdh_w"];
+            if (c.contains("ttc_w"))       p.power.ttc_w       = c["ttc_w"];
+            if (c.contains("actuators_w")) p.power.actuators_w = c["actuators_w"];
+        }
+    }
+
+    // thermal
+    if (j.contains("thermal")) {
+        auto& th = j["thermal"];
+        if (th.contains("material"))              p.thermal.material              = th["material"].get<std::string>();
+        if (th.contains("wall_thickness_mm"))     p.thermal.wall_thickness_mm     = th["wall_thickness_mm"];
+        if (th.contains("emissivity"))            p.thermal.emissivity            = th["emissivity"];
+        if (th.contains("temp_max_structural_c")) p.thermal.temp_max_structural_c = th["temp_max_structural_c"];
+        if (th.contains("temp_min_structural_c")) p.thermal.temp_min_structural_c = th["temp_min_structural_c"];
+    }
+
     std::fprintf(stderr, "[vsl] loaded mission_params: %s\n", path.c_str());
     return true;
 }

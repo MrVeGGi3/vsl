@@ -53,19 +53,26 @@ func _build_toolbar() -> void:
 	bar.offset_top = 4.0
 	bar.offset_bottom = 34.0
 	bar.offset_left = 4.0
-	bar.offset_right = 600.0
+	bar.offset_right = get_viewport().get_visible_rect().size.x - 4.0
 	bar.add_theme_constant_override("separation", 4)
 	$UILayer.add_child(bar)
 
 	_add_panel_button(bar, "Mission Design",  $UILayer/MissionDesignPanel)
 	_add_panel_button(bar, "Rocket Design",   $UILayer/RocketDesignPanel)
 	_add_panel_button(bar, "Flight Analysis", $UILayer/AnalysisPanel)
+	_add_panel_button(bar, "Payload",         $UILayer/PayloadPanel,  false)
+	_add_panel_button(bar, "Control",         $UILayer/ControlPanel,  false)
+	_add_panel_button(bar, "OBDH",            $UILayer/ObdhPanel,     false)
+	_add_panel_button(bar, "TT&C",            $UILayer/TtcPanel,      false)
+	_add_panel_button(bar, "Power",           $UILayer/PowerPanel,    false)
+	_add_panel_button(bar, "Thermal",         $UILayer/ThermalPanel,  false)
+	_add_panel_button(bar, "Budget",          $UILayer/BudgetPanel,   false)
 
-func _add_panel_button(bar: HBoxContainer, label: String, panel: Control) -> void:
+func _add_panel_button(bar: HBoxContainer, label: String, panel: Control, initially_on: bool = true) -> void:
 	var btn := Button.new()
 	btn.text = label
 	btn.toggle_mode = true
-	btn.button_pressed = true
+	btn.button_pressed = initially_on
 	btn.focus_mode = Control.FOCUS_NONE
 	btn.toggled.connect(func(on: bool): panel.visible = on)
 	panel.visibility_changed.connect(func(): btn.set_pressed_no_signal(panel.visible))

@@ -87,13 +87,51 @@ struct VslOrbitalConfig {
     double      target_alt_km       = 600.0;  // Hohmann target
 };
 
+struct VslObdhConfig {
+    double      mass_kg         = 0.5;
+    double      power_avg_w     = 3.0;
+    double      data_rate_kbps  = 100.0;
+    double      storage_mb      = 128.0;
+    std::string processor       = "STM32H7";
+};
+
+struct VslTtcConfig {
+    double freq_mhz        = 433.0;
+    double tx_power_w      = 1.0;
+    double tx_gain_dbi     = 0.0;
+    double rx_gain_dbi     = 6.0;
+    double system_losses_db = 3.0;
+    double range_km        = 50.0;
+};
+
+struct VslPowerConfig {
+    double battery_capacity_wh = 20.0;
+    double battery_mass_kg     = 0.3;
+    double payload_w           = 5.0;
+    double obdh_w              = 3.0;
+    double ttc_w               = 2.0;
+    double actuators_w         = 0.5;
+};
+
+struct VslThermalConfig {
+    std::string material               = "aluminum_6061";
+    double      wall_thickness_mm      = 2.0;
+    double      emissivity             = 0.15;
+    double      temp_max_structural_c  = 130.0;
+    double      temp_min_structural_c  = -40.0;
+};
+
 struct VslMissionParams {
-    VslOrbitalConfig    orbital;
-    VslLaunchSite       launch_site;
-    VslGroundStation    ground_station;
-    VslAtmosphereConfig atmosphere;
-    VslPayloadConfig    payload;
+    VslOrbitalConfig     orbital;
+    VslLaunchSite        launch_site;
+    VslGroundStation     ground_station;
+    VslAtmosphereConfig  atmosphere;
+    VslPayloadConfig     payload;
     VslThrustCurveConfig propulsion;
-    VslRocketConfig     rocket;
-    VslSimConfig        simulation;
+    VslRocketConfig      rocket;
+    VslSimConfig         simulation;
+    VslObdhConfig        obdh;
+    VslTtcConfig         ttc;
+    VslPowerConfig       power;
+    VslThermalConfig     thermal;
 };

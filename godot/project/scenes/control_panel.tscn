@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://control_panel"]
+
+[ext_resource type="Script" path="res://scripts/control_panel.gd" id="1"]
+
+[node name="ControlPanel" type="PanelContainer"]
+script = ExtResource("1")
