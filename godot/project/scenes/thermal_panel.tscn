@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://thermal_panel"]
+
+[ext_resource type="Script" path="res://scripts/thermal_panel.gd" id="1"]
+
+[node name="ThermalPanel" type="PanelContainer"]
+script = ExtResource("1")

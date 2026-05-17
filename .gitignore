@@ -7,6 +7,7 @@
 # C++ build artifacts
 build/
 build_*/
+build2/
 cmake-build-*/
 CMakeFiles/
 *.o

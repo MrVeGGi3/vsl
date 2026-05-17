@@ -1,9 +1,11 @@
 extends Control
 
-const BTN_AREA_W  := 180.0
-const BAR_Y       := 12.0
-const BAR_H       := 22.0
+const BTN_AREA_W  := 200.0
+const BTN_MARGIN  :=  24.0   # gap between right edge of screen and HBox
+const BAR_Y       := 8.0
+const BAR_H       := 18.0
 const LABEL_SIZE  := 10
+const STRIP_H     := 46.0
 
 var _eclipse_starts: PackedFloat64Array = PackedFloat64Array()
 var _eclipse_ends:   PackedFloat64Array = PackedFloat64Array()
@@ -11,35 +13,43 @@ var _access_windows: Array = []
 var _duration_s: float = 86400.0
 var _t_now:      float = 0.0
 
-var _frame_tick: int = 0
+var _frame_tick:  int = 0
+var _speed_hbox: HBoxContainer
 
 func _ready() -> void:
-	set_anchor_and_offset(SIDE_LEFT,   0.0,    0.0)
-	set_anchor_and_offset(SIDE_RIGHT,  1.0,    0.0)
-	set_anchor_and_offset(SIDE_TOP,    1.0,  -68.0)
-	set_anchor_and_offset(SIDE_BOTTOM, 1.0,    0.0)
-
 	_build_speed_buttons()
+	_do_layout()
+	get_viewport().size_changed.connect(_do_layout)
+
+func _do_layout() -> void:
+	var vp := get_viewport_rect().size
+	set_position(Vector2(0.0, vp.y - STRIP_H))
+	set_size(Vector2(vp.x, STRIP_H))
+	if _speed_hbox:
+		_speed_hbox.set_position(Vector2(vp.x - BTN_AREA_W - BTN_MARGIN, 0.0))
+		_speed_hbox.set_size(Vector2(BTN_AREA_W, STRIP_H))
 
 func _build_speed_buttons() -> void:
-	var hbox := HBoxContainer.new()
-	hbox.set_anchor_and_offset(SIDE_LEFT,   1.0, -BTN_AREA_W)
-	hbox.set_anchor_and_offset(SIDE_RIGHT,  1.0,           0.0)
-	hbox.set_anchor_and_offset(SIDE_TOP,    0.0,           0.0)
-	hbox.set_anchor_and_offset(SIDE_BOTTOM, 1.0,           0.0)
-	add_child(hbox)
+	_speed_hbox = HBoxContainer.new()
+	_speed_hbox.add_theme_constant_override("separation", 4)
+	add_child(_speed_hbox)
 
 	var speed_label := Label.new()
-	speed_label.text = " Speed:"
-	hbox.add_child(speed_label)
+	speed_label.text = "Spd"
+	speed_label.add_theme_font_size_override("font_size", 10)
+	speed_label.vertical_alignment = VERTICAL_ALIGNMENT_CENTER
+	_speed_hbox.add_child(speed_label)
 
 	for speed in [1, 10, 100, 1000]:
 		var btn := Button.new()
 		btn.text = "×%d" % speed
-		btn.size_flags_horizontal = Control.SIZE_EXPAND_FILL
-		var s: int = speed  # capture for closure
+		btn.focus_mode = Control.FOCUS_NONE
+		btn.custom_minimum_size    = Vector2(40, 28)
+		btn.size_flags_horizontal  = Control.SIZE_SHRINK_CENTER
+		btn.size_flags_vertical    = Control.SIZE_SHRINK_CENTER
+		var s: int = speed
 		btn.pressed.connect(func(): _set_speed(s))
-		hbox.add_child(btn)
+		_speed_hbox.add_child(btn)
 
 func _set_speed(speed: int) -> void:
 	var bridge := get_node_or_null("/root/Main/SolverBridge")
@@ -86,7 +96,7 @@ func _process(_delta: float) -> void:
 		queue_redraw()
 
 func _draw() -> void:
-	var bar_w := size.x - BTN_AREA_W - 8.0
+	var bar_w := size.x - BTN_AREA_W - BTN_MARGIN - 4.0
 	if bar_w <= 8.0:
 		return
 
@@ -111,16 +121,14 @@ func _draw() -> void:
 		var x1 := _to_x(float(w["t_end_s"]),   bar_w)
 		draw_rect(Rect2(x0, BAR_Y, maxf(x1 - x0, 2.0), BAR_H), Color(0.2, 0.9, 0.3, 0.85))
 
-	# Time cursor
+	# Time cursor — confined to the bar height only
 	var cx := _to_x(_t_now, bar_w)
-	draw_line(Vector2(cx, 0), Vector2(cx, size.y), Color(1, 1, 1, 0.9), 2.0)
+	draw_line(Vector2(cx, BAR_Y), Vector2(cx, BAR_Y + BAR_H), Color(1, 1, 1, 0.9), 2.0)
 
-	# Labels
+	# Labels — baseline inside bar so font ascent never exits the strip
 	var font := ThemeDB.fallback_font
-	draw_string(font, Vector2(4, BAR_Y - 2),
+	draw_string(font, Vector2(4.0, BAR_Y + BAR_H - 3.0),
 		"t=%.0fs" % _t_now, HORIZONTAL_ALIGNMENT_LEFT, -1, LABEL_SIZE, Color.WHITE)
-	draw_string(font, Vector2(bar_w - 4, BAR_Y - 2),
-		"%.0fs" % _duration_s, HORIZONTAL_ALIGNMENT_RIGHT, -1, LABEL_SIZE, Color(0.7, 0.7, 0.7))
 
 	# Legend
 	var ly := BAR_Y + BAR_H + 4.0

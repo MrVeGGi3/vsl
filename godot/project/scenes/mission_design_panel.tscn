@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://mission_design_panel"]
+
+[ext_resource type="Script" path="res://scripts/mission_design_panel.gd" id="1"]
+
+[node name="MissionDesignPanel" type="PanelContainer"]
+script = ExtResource("1")

@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://rocket_design_panel"]
+
+[ext_resource type="Script" path="res://scripts/rocket_design_panel.gd" id="1"]
+
+[node name="RocketDesignPanel" type="PanelContainer"]
+script = ExtResource("1")
