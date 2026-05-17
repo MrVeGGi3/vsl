@@ -152,12 +152,48 @@ main/
 ├── CLAUDE.md
 ├── CMakeLists.txt
 ├── src/
-│   ├── main.cpp           ← entry point, inicializa tudo
-│   ├── double_buffer.h    ← double buffer lock-free
-│   ├── julia_api.h        ← declarações C das funções Julia
-│   └── godot_bridge.h     ← inicialização LibGodot
-└── build/                 ← gerado pelo CMake (não commitar)
+│   ├── main.cpp                    ← entry point, inicializa tudo
+│   ├── double_buffer.h             ← double buffer lock-free (solver → render)
+│   ├── file_watcher.h              ← hot-reload: inotify watcher não-bloqueante
+│   ├── julia_api.h                 ← declarações C das funções Julia
+│   ├── godot_bridge.h              ← inicialização LibGodot
+│   ├── mission_params.h            ← structs de parâmetros da missão
+│   └── mission_params_loader.h/cpp ← parser JSON → VslMissionParams
+└── build/                          ← gerado pelo CMake (não commitar)
 ```
+
+---
+
+## Hot-reload — mission_params.json
+
+O loop principal monitora `mission_params.json` via inotify (Linux).
+Qualquer gravação no arquivo — direta ou via rename atômico do editor (vim, VSCode) —
+dispara uma recarga completa sem reiniciar o processo.
+
+```cpp
+// FileWatcher observa o diretório pai — captura IN_CLOSE_WRITE e IN_MOVED_TO
+FileWatcher watcher(params_file);   // inotify_init1(IN_NONBLOCK | IN_CLOEXEC)
+
+// No loop principal — zero overhead quando não há eventos
+if (watcher.poll()) {
+    // debounce 300 ms — burst writes do editor disparam só uma vez
+    if (now - last_reload > 300ms) {
+        VslMissionParams mp_new = mp;           // copia defaults atuais
+        if (load_mission_params(path, mp_new)) {// falha silenciosa: preserva mp
+            mp = mp_new;
+            solver_update_orbit(mp);
+            solver_update_trajectory(mp);
+            write_solver_json(...);             // atualiza solver_results.json
+        }
+    }
+}
+```
+
+**Comportamento:**
+- `poll()` é O(1) e non-blocking — não atrasa o render quando não há mudanças
+- JSON inválido é silencioso: `mp` mantém os valores anteriores
+- Render bloqueia ~1-2 s durante o re-solve (aceitável em desenvolvimento)
+- Se inotify falhar (ex: sem permissão), log no stderr e continua sem hot-reload
 
 ---
 

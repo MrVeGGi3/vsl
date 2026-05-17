@@ -41,10 +41,42 @@ func _ready() -> void:
 	if not _vr_active:
 		_setup_desktop_camera()
 		_hide_vr_panel()
+		_build_toolbar()
 	else:
 		_attach_ui_to_world()
 		_init_vr_controllers()
 	_setup_ground_station()
+
+func _build_toolbar() -> void:
+	var bar := HBoxContainer.new()
+	bar.set_anchors_preset(Control.PRESET_TOP_LEFT)
+	bar.offset_top = 4.0
+	bar.offset_bottom = 34.0
+	bar.offset_left = 4.0
+	bar.offset_right = get_viewport().get_visible_rect().size.x - 4.0
+	bar.add_theme_constant_override("separation", 4)
+	$UILayer.add_child(bar)
+
+	_add_panel_button(bar, "Mission Design",  $UILayer/MissionDesignPanel)
+	_add_panel_button(bar, "Rocket Design",   $UILayer/RocketDesignPanel)
+	_add_panel_button(bar, "Flight Analysis", $UILayer/AnalysisPanel)
+	_add_panel_button(bar, "Payload",         $UILayer/PayloadPanel,  false)
+	_add_panel_button(bar, "Control",         $UILayer/ControlPanel,  false)
+	_add_panel_button(bar, "OBDH",            $UILayer/ObdhPanel,     false)
+	_add_panel_button(bar, "TT&C",            $UILayer/TtcPanel,      false)
+	_add_panel_button(bar, "Power",           $UILayer/PowerPanel,    false)
+	_add_panel_button(bar, "Thermal",         $UILayer/ThermalPanel,  false)
+	_add_panel_button(bar, "Budget",          $UILayer/BudgetPanel,   false)
+
+func _add_panel_button(bar: HBoxContainer, label: String, panel: Control, initially_on: bool = true) -> void:
+	var btn := Button.new()
+	btn.text = label
+	btn.toggle_mode = true
+	btn.button_pressed = initially_on
+	btn.focus_mode = Control.FOCUS_NONE
+	btn.toggled.connect(func(on: bool): panel.visible = on)
+	panel.visibility_changed.connect(func(): btn.set_pressed_no_signal(panel.visible))
+	bar.add_child(btn)
 
 func _init_vr_controllers() -> void:
 	for ctrl in [$XROrigin3D/XRController3DLeft, $XROrigin3D/XRController3DRight]:

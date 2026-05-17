@@ -5,6 +5,20 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+# ── nlohmann/json ─────────────────────────────────────────────────────────────
+# Header-only JSON library for reading mission_params.json.
+# Uses system package if available, otherwise fetches from GitHub.
+find_package(nlohmann_json 3.11 QUIET)
+if(NOT nlohmann_json_FOUND)
+    include(FetchContent)
+    FetchContent_Declare(
+        nlohmann_json
+        URL      https://github.com/nlohmann/json/releases/download/v3.11.3/json.tar.xz
+        URL_HASH SHA256=d6c65aca6b1ed68e7a182f4757257b107ae403032760ed6ef121c9d55e81757d
+    )
+    FetchContent_MakeAvailable(nlohmann_json)
+endif()
+
 # ── Compiler flags ────────────────────────────────────────────────────────────
 # ASan and TSan are mutually exclusive — Debug uses ASan for memory safety.
 # To build with TSan: cmake -DCMAKE_BUILD_TYPE=Debug -DVSL_TSAN=ON
@@ -109,6 +123,7 @@ if(GODOT_SO)
         src/main.cpp
         src/godot_bridge.cpp
         src/julia_solver.cpp
+        src/mission_params_loader.cpp
     )
 
     target_include_directories(vsl_main PRIVATE src/)
@@ -116,6 +131,7 @@ if(GODOT_SO)
     target_link_libraries(vsl_main PRIVATE
         libgodot
         libjulia
+        nlohmann_json::nlohmann_json
         dl          # dlsym for GodotInstance C++ symbol resolution
     )
 
@@ -136,11 +152,12 @@ endif()
 add_executable(vsl_integration_test
     tests/integration_test.cpp
     src/julia_solver.cpp
+    src/mission_params_loader.cpp
 )
 
 target_include_directories(vsl_integration_test PRIVATE src/)
 
-target_link_libraries(vsl_integration_test PRIVATE libjulia dl)
+target_link_libraries(vsl_integration_test PRIVATE libjulia nlohmann_json::nlohmann_json dl)
 
 # Julia dlopen(RTLD_DEEPBIND) is incompatible with AddressSanitizer
 # (https://github.com/google/sanitizers/issues/611). Override global ASan flags
