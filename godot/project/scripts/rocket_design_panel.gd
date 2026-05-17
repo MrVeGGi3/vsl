@@ -36,6 +36,11 @@ var _i_ax_field:      LineEdit
 
 var _status_label:    Label
 
+var _cad_status_label: Label
+var _export_btn:       Button
+var _cad_mesh:         ArrayMesh = null
+var _preview_window:   Window    = null
+
 func _ready() -> void:
 	_fit_to_viewport()
 	get_viewport().size_changed.connect(_fit_to_viewport)
@@ -62,6 +67,7 @@ func _ready() -> void:
 	_build_fin_section(inner)
 	_build_aero_section(inner)
 	_build_inertia_section(inner)
+	_build_cad_section(inner)
 
 	var apply_btn := Button.new()
 	apply_btn.text = "Apply & Save"
@@ -186,6 +192,29 @@ func _build_inertia_section(parent: VBoxContainer) -> void:
 	_i_lat_field = _field_row(grid, "I lateral", "kg·m²")
 	_i_ax_field  = _field_row(grid, "I axial",   "kg·m²")
 	parent.add_child(HSeparator.new())
+
+func _build_cad_section(parent: VBoxContainer) -> void:
+	_section_label(parent, "CAD / STL")
+	var hbox := HBoxContainer.new()
+	hbox.add_theme_constant_override("separation", 6)
+	parent.add_child(hbox)
+
+	var gen_btn := Button.new()
+	gen_btn.text = "Gerar CAD"
+	gen_btn.focus_mode = Control.FOCUS_NONE
+	gen_btn.pressed.connect(_on_generate_cad)
+	hbox.add_child(gen_btn)
+
+	_export_btn = Button.new()
+	_export_btn.text = "Export STL"
+	_export_btn.focus_mode = Control.FOCUS_NONE
+	_export_btn.disabled = true
+	_export_btn.pressed.connect(_on_export_stl)
+	hbox.add_child(_export_btn)
+
+	_cad_status_label = Label.new()
+	_cad_status_label.add_theme_font_size_override("font_size", 10)
+	parent.add_child(_cad_status_label)
 
 # ── Data ───────────────────────────────────────────────────────────────────────
 
@@ -348,6 +377,83 @@ func _on_apply() -> void:
 		_set_status("Saved ✓")
 	else:
 		_set_status("Save failed")
+
+# ── CAD ────────────────────────────────────────────────────────────────────────
+
+func _on_generate_cad() -> void:
+	_cad_status_label.text = "Gerando…"
+	_on_apply()
+	var params := MissionParamsIO.load_params()
+	var result := CadExporter.generate(params)
+	if not result.ok:
+		_cad_status_label.text = "Erro: " + result.get("error", "openscad falhou")
+		return
+	_cad_mesh = CadExporter.load_stl_binary(result.stl_print)
+	_export_btn.disabled = false
+	var sz := FileAccess.get_file_as_bytes(result.stl_print).size()
+	_cad_status_label.text = "OK — print %.0f KB · CFD %.0f KB" % [
+		sz / 1024.0,
+		FileAccess.get_file_as_bytes(result.stl_cfd).size() / 1024.0]
+	if _cad_mesh:
+		_show_cad_preview(_cad_mesh)
+
+func _show_cad_preview(mesh: ArrayMesh) -> void:
+	if _preview_window != null and is_instance_valid(_preview_window):
+		_preview_window.queue_free()
+
+	_preview_window = Window.new()
+	_preview_window.title = "Rocket CAD Preview"
+	_preview_window.initial_position = Window.WINDOW_INITIAL_POSITION_CENTER_SCREEN_WITH_MOUSE_FOCUS
+	_preview_window.size = Vector2i(380, 480)
+	_preview_window.close_requested.connect(func(): _preview_window.hide())
+
+	var sub := SubViewport.new()
+	sub.size = Vector2i(380, 480)
+	sub.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+
+	var cam := Camera3D.new()
+	# Rocket along Y (Godot Y-up after coord remap). Position to view the full body.
+	cam.position = Vector3(0.6, 0.7, 1.2)
+	cam.look_at(Vector3(0.0, 0.7, 0.0), Vector3.UP)
+	sub.add_child(cam)
+
+	var light := DirectionalLight3D.new()
+	light.rotation_degrees = Vector3(-45.0, 45.0, 0.0)
+	light.light_energy = 1.2
+	sub.add_child(light)
+
+	var mi := MeshInstance3D.new()
+	mi.mesh = mesh
+	sub.add_child(mi)
+
+	var svp_container := SubViewportContainer.new()
+	svp_container.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	svp_container.stretch = true
+	svp_container.add_child(sub)
+	_preview_window.add_child(svp_container)
+
+	get_tree().root.add_child(_preview_window)
+	_preview_window.popup_centered()
+
+func _on_export_stl() -> void:
+	var dlg := FileDialog.new()
+	dlg.access = FileDialog.ACCESS_FILESYSTEM
+	dlg.file_mode = FileDialog.FILE_MODE_SAVE_FILE
+	dlg.filters = PackedStringArray(["*.stl ; STL Files"])
+	dlg.current_file = "rocket_print.stl"
+	dlg.file_selected.connect(_do_export_stl.bind(dlg))
+	dlg.canceled.connect(dlg.queue_free)
+	get_tree().root.add_child(dlg)
+	dlg.popup_centered(Vector2i(720, 520))
+
+func _do_export_stl(dest: String, dlg: FileDialog) -> void:
+	var src := ProjectSettings.globalize_path("res://cad/rocket_print.stl")
+	var da := DirAccess.open("user://")
+	if da == null:
+		da = DirAccess.open("res://")
+	var err := da.copy(src, dest) if da else ERR_CANT_OPEN
+	_set_status("STL exportado ✓" if err == OK else "Export falhou (%d)" % err)
+	dlg.queue_free()
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
 
