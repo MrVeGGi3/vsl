@@ -9,4 +9,5 @@ using BenchmarkTools
     include("orbital/test_maneuvers.jl")
     include("mission/test_eclipse.jl")
     include("mission/test_access.jl")
+    include("trajectory/test_sixdof.jl")
 end

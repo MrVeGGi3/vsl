@@ -1,6 +1,7 @@
 #include "julia_api.h"
 
 #include <climits>
+#include <cstdint>
 #include <cstdio>
 #include <cstring>
 #include <string>
@@ -43,20 +44,22 @@ static std::string solver_abs_path() {
 extern "C" {
 
 int vsl_solver_init(const char* sysimage_path) {
-    (void)sysimage_path;  // Phase 3+: load PackageCompiler sysimage here
+    const bool has_sysimage = sysimage_path && sysimage_path[0];
 
-    std::string solver_path = solver_abs_path();
-    if (solver_path.empty()) {
-        std::fprintf(stderr, "[vsl] cannot resolve solver path\n");
-        return -1;
+    if (!has_sysimage) {
+        std::string solver_path = solver_abs_path();
+        if (solver_path.empty()) {
+            std::fprintf(stderr, "[vsl] cannot resolve solver path\n");
+            return -1;
+        }
+
+        char cmd[2048];
+        std::snprintf(cmd, sizeof(cmd),
+            "import Pkg; Pkg.activate(abspath(\"%s\"), io=devnull)",
+            solver_path.c_str());
+        jl_eval_string(cmd);
+        if (check_julia_error("Pkg.activate")) return -1;
     }
-
-    char cmd[2048];
-    std::snprintf(cmd, sizeof(cmd),
-        "import Pkg; Pkg.activate(abspath(\"%s\"), io=devnull)",
-        solver_path.c_str());
-    jl_eval_string(cmd);
-    if (check_julia_error("Pkg.activate")) return -1;
 
     jl_eval_string("using VSLSolver");
     if (check_julia_error("using VSLSolver")) return -1;
@@ -326,6 +329,84 @@ int vsl_generate_report_json(
     out_json[out_json_maxlen - 1] = '\0';
 
     return 0;
+}
+
+int vsl_trajectory_sixdof(
+    double x0,   double y0,   double z0,
+    double vx0,  double vy0,  double vz0,
+    double q00,  double q10,  double q20,  double q30,
+    double p0,   double qr0,  double r0,
+    const VslThrustCurveData* thrust,
+    const VslAeroTableData*   aero,
+    int                       use_atmosphere,
+    double t_end_s,
+    double* out_state,
+    double* out_apogee_m
+) {
+    if (!g_initialized) return -1;
+
+    char cmd[2048];
+    std::snprintf(cmd, sizeof(cmd),
+        "VSLSolver._sixdof_from_ptrs("
+        "%.17e,%.17e,%.17e,%.17e,%.17e,%.17e,"
+        "%.17e,%.17e,%.17e,%.17e,%.17e,%.17e,%.17e,"
+        "UInt64(%lu),UInt64(%lu),%s,%.17e,"
+        "UInt64(%lu),UInt64(%lu))",
+        x0, y0, z0, vx0, vy0, vz0,
+        q00, q10, q20, q30, p0, qr0, r0,
+        (unsigned long)(uintptr_t)thrust,
+        (unsigned long)(uintptr_t)aero,
+        use_atmosphere ? "true" : "false", t_end_s,
+        (unsigned long)(uintptr_t)out_state,
+        (unsigned long)(uintptr_t)out_apogee_m);
+
+    jl_value_t* rc = jl_eval_string(cmd);
+    if (check_julia_error("vsl_trajectory_sixdof") || !rc) return -1;
+    return (int)jl_unbox_int32(rc);
+}
+
+int vsl_trajectory_sixdof_points(
+    double x0,   double y0,   double z0,
+    double vx0,  double vy0,  double vz0,
+    double q00,  double q10,  double q20,  double q30,
+    double p0,   double qr0,  double r0,
+    const VslThrustCurveData* thrust,
+    const VslAeroTableData*   aero,
+    int                       use_atmosphere,
+    double t_end_s,
+    double* out_state,
+    double* out_apogee_m,
+    float*  out_times,
+    float*  out_positions,
+    int*    out_count,
+    int     max_points
+) {
+    if (!g_initialized) return -1;
+
+    char cmd[2048];
+    std::snprintf(cmd, sizeof(cmd),
+        "VSLSolver._sixdof_points_from_ptrs("
+        "%.17e,%.17e,%.17e,%.17e,%.17e,%.17e,"
+        "%.17e,%.17e,%.17e,%.17e,%.17e,%.17e,%.17e,"
+        "UInt64(%lu),UInt64(%lu),%s,%.17e,"
+        "UInt64(%lu),UInt64(%lu),"
+        "UInt64(%lu),UInt64(%lu),"
+        "UInt64(%lu),Int32(%d))",
+        x0, y0, z0, vx0, vy0, vz0,
+        q00, q10, q20, q30, p0, qr0, r0,
+        (unsigned long)(uintptr_t)thrust,
+        (unsigned long)(uintptr_t)aero,
+        use_atmosphere ? "true" : "false", t_end_s,
+        (unsigned long)(uintptr_t)out_state,
+        (unsigned long)(uintptr_t)out_apogee_m,
+        (unsigned long)(uintptr_t)out_times,
+        (unsigned long)(uintptr_t)out_positions,
+        (unsigned long)(uintptr_t)out_count,
+        max_points);
+
+    jl_value_t* rc = jl_eval_string(cmd);
+    if (check_julia_error("vsl_trajectory_sixdof_points") || !rc) return -1;
+    return (int)jl_unbox_int32(rc);
 }
 
 } // extern "C"

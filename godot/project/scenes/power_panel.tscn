@@ -1,0 +1,6 @@
+[gd_scene load_steps=2 format=3 uid="uid://power_panel"]
+
+[ext_resource type="Script" path="res://scripts/power_panel.gd" id="1"]
+
+[node name="PowerPanel" type="PanelContainer"]
+script = ExtResource("1")

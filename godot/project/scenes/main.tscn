@@ -1,13 +1,23 @@
 [gd_scene format=3 uid="uid://main"]
 
-[ext_resource type="Script" uid="uid://d3iiwhk23a6cl" path="res://scripts/main_scene.gd" id="1"]
+[ext_resource type="Script" uid="uid://6yxnse0n5flh" path="res://scripts/main_scene.gd" id="1"]
 [ext_resource type="PackedScene" path="res://scenes/orbit_viewer.tscn" id="2"]
 [ext_resource type="PackedScene" uid="uid://earth" path="res://scenes/earth.tscn" id="3"]
 [ext_resource type="PackedScene" uid="uid://bpsmqj4x1wnq" path="res://scenes/analysis_panel.tscn" id="4"]
 [ext_resource type="PackedScene" uid="uid://c2ndkf8p7mn6" path="res://scenes/mission_timeline.tscn" id="5"]
-[ext_resource type="Script" uid="uid://da58iyw6wvqdn" path="res://scripts/vr_controller.gd" id="6"]
-[ext_resource type="Script" uid="uid://ol5566taxm0j" path="res://scripts/vr_ui_panel.gd" id="7"]
-[ext_resource type="Script" path="res://scripts/solver_bridge.gd" id="8"]
+[ext_resource type="Script" uid="uid://bsqme30t14t5h" path="res://scripts/vr_controller.gd" id="6"]
+[ext_resource type="Script" uid="uid://ddh5nftypyr8c" path="res://scripts/vr_ui_panel.gd" id="7"]
+[ext_resource type="Script" uid="uid://c8c13abslulgh" path="res://scripts/solver_bridge.gd" id="8"]
+[ext_resource type="PackedScene" path="res://scenes/trajectory_panel.tscn" id="9"]
+[ext_resource type="PackedScene" path="res://scenes/mission_design_panel.tscn" id="10"]
+[ext_resource type="PackedScene" path="res://scenes/rocket_design_panel.tscn" id="11"]
+[ext_resource type="PackedScene" path="res://scenes/payload_panel.tscn" id="12"]
+[ext_resource type="PackedScene" path="res://scenes/control_panel.tscn" id="13"]
+[ext_resource type="PackedScene" path="res://scenes/obdh_panel.tscn" id="14"]
+[ext_resource type="PackedScene" path="res://scenes/ttc_panel.tscn" id="15"]
+[ext_resource type="PackedScene" path="res://scenes/power_panel.tscn" id="16"]
+[ext_resource type="PackedScene" path="res://scenes/thermal_panel.tscn" id="17"]
+[ext_resource type="PackedScene" path="res://scenes/budget_panel.tscn" id="18"]
 
 [node name="Main" type="Node3D" unique_id=1669414694]
 script = ExtResource("1")
@@ -29,7 +39,6 @@ is_right_hand = false
 [node name="XRController3DRight" type="XRController3D" parent="XROrigin3D" unique_id=1546357623]
 tracker = &"right_hand"
 script = ExtResource("6")
-is_right_hand = true
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=1710876904]
 
@@ -56,3 +65,32 @@ script = ExtResource("7")
 [node name="MissionTimeline" parent="UILayer" unique_id=1239035440 instance=ExtResource("5")]
 layout_mode = 3
 anchors_preset = 0
+
+[node name="TrajectoryPanel" parent="UILayer" unique_id=987654321 instance=ExtResource("9")]
+layout_mode = 3
+anchors_preset = 0
+
+[node name="MissionDesignPanel" parent="UILayer" unique_id=111111101 instance=ExtResource("10")]
+
+[node name="RocketDesignPanel" parent="UILayer" unique_id=111111102 instance=ExtResource("11")]
+
+[node name="PayloadPanel" parent="UILayer" unique_id=111111103 instance=ExtResource("12")]
+visible = false
+
+[node name="ControlPanel" parent="UILayer" unique_id=111111104 instance=ExtResource("13")]
+visible = false
+
+[node name="ObdhPanel" parent="UILayer" unique_id=111111105 instance=ExtResource("14")]
+visible = false
+
+[node name="TtcPanel" parent="UILayer" unique_id=111111106 instance=ExtResource("15")]
+visible = false
+
+[node name="PowerPanel" parent="UILayer" unique_id=111111107 instance=ExtResource("16")]
+visible = false
+
+[node name="ThermalPanel" parent="UILayer" unique_id=111111108 instance=ExtResource("17")]
+visible = false
+
+[node name="BudgetPanel" parent="UILayer" unique_id=111111109 instance=ExtResource("18")]
+visible = false
