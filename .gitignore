@@ -26,6 +26,7 @@ compile_commands.json
 *.mono/
 *.uid
 godot/project/solver_results.json
+godot/project/cad/
 
 # Large binary assets (download via textures/earth/download.sh)
 godot/project/textures/earth/*.jpg
