@@ -48,10 +48,16 @@ static func load_stl_binary(path: String) -> ArrayMesh:
 		return null
 	f.get_buffer(80)            # skip 80-byte header
 	var n_tri := f.get_32()
+	var expected_size := 84 + int(n_tri) * 50
+	if n_tri == 0 or expected_size != int(f.get_length()):
+		f.close()
+		push_error("load_stl_binary: formato inválido (n_tri=%d, size=%d, expected=%d)" \
+				% [n_tri, f.get_length(), expected_size])
+		return null
 	var verts := PackedVector3Array()
 	var norms := PackedVector3Array()
-	verts.resize(n_tri * 3)
-	norms.resize(n_tri * 3)
+	verts.resize(int(n_tri) * 3)
+	norms.resize(int(n_tri) * 3)
 	for i in n_tri:
 		var nx := f.get_float(); var ny := f.get_float(); var nz := f.get_float()
 		var n := Vector3(nx, nz, -ny)
@@ -102,7 +108,7 @@ static func _build_defines(rkt: Dictionary, fins: Dictionary,
 
 static func _run_openscad(tpl: String, out: String,
 		defines: Dictionary, solid: bool, fn_res: int) -> String:
-	var args := PackedStringArray(["-o", out, tpl])
+	var args := PackedStringArray(["-o", out, "--export-format", "binstl", tpl])
 	for key in defines:
 		args.append("-D")
 		args.append("%s=%s" % [key, str(defines[key])])

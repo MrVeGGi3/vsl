@@ -48,7 +48,7 @@ func copy_positions_to(arr: PackedVector3Array, count: int) -> void:
 	if not _loaded:
 		return
 	var flat: Array = _data.get("positions_flat", [])
-	var n := mini(count, flat.size() / 3)
+	var n = mini(count, flat.size() / 3)
 	for i in n:
 		arr[i] = Vector3(float(flat[i * 3]), float(flat[i * 3 + 1]), float(flat[i * 3 + 2])) / 1000.0
 
@@ -122,7 +122,7 @@ func copy_trajectory_positions_to(arr: PackedVector3Array, count: int) -> void:
 	if not _loaded:
 		return
 	var flat: Array = _data.get("trajectory_positions_flat", [])
-	var n := mini(count, flat.size() / 3)
+	var n = mini(count, flat.size() / 3)
 	for i in n:
 		arr[i] = Vector3(
 			float(flat[i * 3]),

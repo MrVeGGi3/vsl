@@ -38,8 +38,19 @@ var _status_label:    Label
 
 var _cad_status_label: Label
 var _export_btn:       Button
+var _generate_btn:     Button
 var _cad_mesh:         ArrayMesh = null
 var _preview_window:   Window    = null
+var _cad_thread:       Thread    = null
+var _aero_thread:      Thread    = null
+
+var _cam:          Camera3D = null
+var _orbit_center: Vector3  = Vector3.ZERO
+var _orbit_r:      float    = 1.0
+var _orbit_r_min:  float    = 0.05
+var _orbit_r_max:  float    = 10.0
+var _orbit_quat:   Quaternion = Quaternion.IDENTITY
+var _cad_gizmo:    Control  = null
 
 func _ready() -> void:
 	_fit_to_viewport()
@@ -199,11 +210,11 @@ func _build_cad_section(parent: VBoxContainer) -> void:
 	hbox.add_theme_constant_override("separation", 6)
 	parent.add_child(hbox)
 
-	var gen_btn := Button.new()
-	gen_btn.text = "Gerar CAD"
-	gen_btn.focus_mode = Control.FOCUS_NONE
-	gen_btn.pressed.connect(_on_generate_cad)
-	hbox.add_child(gen_btn)
+	_generate_btn = Button.new()
+	_generate_btn.text = "Gerar CAD"
+	_generate_btn.focus_mode = Control.FOCUS_NONE
+	_generate_btn.pressed.connect(_on_generate_cad)
+	hbox.add_child(_generate_btn)
 
 	_export_btn = Button.new()
 	_export_btn.text = "Export STL"
@@ -381,25 +392,115 @@ func _on_apply() -> void:
 # ── CAD ────────────────────────────────────────────────────────────────────────
 
 func _on_generate_cad() -> void:
+	if _cad_thread != null and _cad_thread.is_started():
+		return
 	_cad_status_label.text = "Gerando…"
+	_generate_btn.disabled = true
 	_on_apply()
 	var params := MissionParamsIO.load_params()
+	_cad_thread = Thread.new()
+	_cad_thread.start(_cad_worker.bind(params))
+
+func _cad_worker(params: Dictionary) -> void:
 	var result := CadExporter.generate(params)
+	call_deferred("_on_cad_done", result)
+
+func _on_cad_done(result: Dictionary) -> void:
+	_cad_thread.wait_to_finish()
+	_generate_btn.disabled = false
 	if not result.ok:
 		_cad_status_label.text = "Erro: " + result.get("error", "openscad falhou")
 		return
 	_cad_mesh = CadExporter.load_stl_binary(result.stl_print)
 	_export_btn.disabled = false
-	var sz := FileAccess.get_file_as_bytes(result.stl_print).size()
-	_cad_status_label.text = "OK — print %.0f KB · CFD %.0f KB" % [
-		sz / 1024.0,
-		FileAccess.get_file_as_bytes(result.stl_cfd).size() / 1024.0]
+	var sz_print := FileAccess.get_file_as_bytes(result.stl_print).size()
+	var sz_cfd   := FileAccess.get_file_as_bytes(result.stl_cfd).size()
+	_cad_status_label.text = "OK — print %.0f KB · CFD %.0f KB · calc. CD0…" % [
+		sz_print / 1024.0, sz_cfd / 1024.0]
 	if _cad_mesh:
 		_show_cad_preview(_cad_mesh)
+	var aero_params := MissionParamsIO.load_params()
+	_aero_thread = Thread.new()
+	_aero_thread.start(_aero_worker.bind(aero_params, sz_print, sz_cfd))
+
+func _aero_worker(params: Dictionary, sz_print: int, sz_cfd: int) -> void:
+	var aero := _compute_aero_sync(params)
+	call_deferred("_on_aero_done", aero, sz_print, sz_cfd)
+
+func _on_aero_done(aero: Dictionary, sz_print: int, sz_cfd: int) -> void:
+	_aero_thread.wait_to_finish()
+	var status := "OK — print %.0f KB · CFD %.0f KB" % [sz_print / 1024.0, sz_cfd / 1024.0]
+	if not aero.is_empty():
+		if not _params.has("rocket"):
+			_params["rocket"] = {}
+		if not _params["rocket"].has("aero"):
+			_params["rocket"]["aero"] = {}
+		for key in aero:
+			_params["rocket"]["aero"][key] = aero[key]
+		MissionParamsIO.save_params(_params)
+		status += " · CD0=%.4f" % aero.get("cd0", 0.0)
+	else:
+		status += " · CD0 N/D"
+	_cad_status_label.text = status
+
+func _compute_aero_sync(params: Dictionary) -> Dictionary:
+	var rkt  = params.get("rocket", {})
+	var fins = rkt.get("fins", {})
+	var proj_root    := ProjectSettings.globalize_path("res://")
+	var vsl_root     := proj_root.path_join("../..").simplify_path()
+	var julia_script := vsl_root.path_join("solver/src/aero_geometry.jl")
+	if not FileAccess.file_exists(julia_script):
+		return {}
+	var args := PackedStringArray([
+		julia_script,
+		"--d="        + str(float(rkt.get("body_diameter_m", 0.08))),
+		"--nose_len=" + str(float(rkt.get("nose_length_m",  0.24))),
+		"--body_len=" + str(float(rkt.get("body_length_m",  1.20))),
+		"--n_fins="   + str(int(fins.get("n_fins", 4))),
+		"--cr="       + str(float(fins.get("root_chord_m",  0.15))),
+		"--ct="       + str(float(fins.get("tip_chord_m",   0.05))),
+		"--span="     + str(float(fins.get("semi_span_m",   0.10))),
+	])
+	var output: Array = []
+	var code := OS.execute("julia", args, output, true)
+	if code != 0:
+		return {}
+	return _parse_julia_aero_output(output)
+
+func _parse_julia_aero_output(output: Array) -> Dictionary:
+	var result := {}
+	if output.is_empty():
+		return result
+	for line in output[0].split("\n"):
+		var parts = line.strip_edges().split("=")
+		if parts.size() == 2 and parts[0].length() > 0 and parts[1].is_valid_float():
+			result[parts[0]] = parts[1].to_float()
+	return result
+
+const ORBIT_SENSITIVITY := 0.005
+
+func _update_cam_orbit() -> void:
+	if _cam == null or not is_instance_valid(_cam):
+		return
+	var cam_dir: Vector3 = _orbit_quat * Vector3(0.0, 0.0, 1.0)
+	var cam_up:  Vector3 = _orbit_quat * Vector3.UP
+	_cam.position = _orbit_center + cam_dir * _orbit_r
+	_cam.look_at(_orbit_center, cam_up)
+	if _cad_gizmo != null and is_instance_valid(_cad_gizmo):
+		_cad_gizmo.queue_redraw()
+
+func _on_orbit_drag(delta: Vector2) -> void:
+	var q_yaw:    Quaternion = Quaternion(Vector3.UP, -delta.x * ORBIT_SENSITIVITY)
+	var cam_right: Vector3   = _orbit_quat * Vector3.RIGHT
+	var q_pitch:  Quaternion = Quaternion(cam_right, -delta.y * ORBIT_SENSITIVITY)
+	_orbit_quat = (q_yaw * q_pitch * _orbit_quat).normalized()
+	_update_cam_orbit()
 
 func _show_cad_preview(mesh: ArrayMesh) -> void:
 	if _preview_window != null and is_instance_valid(_preview_window):
 		_preview_window.queue_free()
+		_cam       = null
+		_cad_gizmo = null
 
 	_preview_window = Window.new()
 	_preview_window.title = "Rocket CAD Preview"
@@ -410,17 +511,47 @@ func _show_cad_preview(mesh: ArrayMesh) -> void:
 	var sub := SubViewport.new()
 	sub.size = Vector2i(380, 480)
 	sub.render_target_update_mode = SubViewport.UPDATE_ALWAYS
+	sub.transparent_bg = false
+	sub.own_world_3d = true
 
-	var cam := Camera3D.new()
-	# Rocket along Y (Godot Y-up after coord remap). Position to view the full body.
-	cam.position = Vector3(0.6, 0.7, 1.2)
-	cam.look_at(Vector3(0.0, 0.7, 0.0), Vector3.UP)
-	sub.add_child(cam)
+	# ── Background + ambient light ────────────────────────────────────────────
+	var env := Environment.new()
+	env.background_mode = Environment.BG_COLOR
+	env.background_color = Color(0.07, 0.08, 0.13)
+	env.ambient_light_source = Environment.AMBIENT_SOURCE_COLOR
+	env.ambient_light_color = Color(0.45, 0.50, 0.65)
+	env.ambient_light_energy = 0.5
+	var world_env := WorldEnvironment.new()
+	world_env.environment = env
+	sub.add_child(world_env)
 
-	var light := DirectionalLight3D.new()
-	light.rotation_degrees = Vector3(-45.0, 45.0, 0.0)
-	light.light_energy = 1.2
-	sub.add_child(light)
+	# ── Camera auto-framed from mesh AABB ─────────────────────────────────────
+	var aabb: AABB = mesh.get_aabb()
+	var center: Vector3 = aabb.get_center()
+	var longest: float = aabb.get_longest_axis_size()
+	_cam          = Camera3D.new()
+	_orbit_center = center
+	_orbit_r      = longest * 1.4
+	_orbit_r_min  = longest * 0.25
+	_orbit_r_max  = longest * 6.0
+	var init_dir: Vector3 = Vector3(longest * 0.3, 0.0, _orbit_r).normalized()
+	_orbit_quat = Quaternion(Vector3(0.0, 0.0, 1.0), init_dir)
+	_update_cam_orbit()
+	sub.add_child(_cam)
+
+	# ── Key light (warm, 45°) ─────────────────────────────────────────────────
+	var key_light := DirectionalLight3D.new()
+	key_light.rotation_degrees = Vector3(-40.0, 30.0, 0.0)
+	key_light.light_energy = 1.4
+	key_light.light_color = Color(1.0, 0.95, 0.88)
+	sub.add_child(key_light)
+
+	# ── Fill light (cool, back-left) ──────────────────────────────────────────
+	var fill_light := DirectionalLight3D.new()
+	fill_light.rotation_degrees = Vector3(-20.0, -150.0, 0.0)
+	fill_light.light_energy = 0.45
+	fill_light.light_color = Color(0.55, 0.65, 1.0)
+	sub.add_child(fill_light)
 
 	var mi := MeshInstance3D.new()
 	mi.mesh = mesh
@@ -431,6 +562,17 @@ func _show_cad_preview(mesh: ArrayMesh) -> void:
 	svp_container.stretch = true
 	svp_container.add_child(sub)
 	_preview_window.add_child(svp_container)
+
+	_cad_gizmo = load("res://scripts/cad_gizmo.gd").new()
+	_cad_gizmo.set_anchors_and_offsets_preset(Control.PRESET_FULL_RECT)
+	_cad_gizmo.mouse_filter = Control.MOUSE_FILTER_STOP
+	_cad_gizmo.set_camera(_cam)
+	_cad_gizmo.orbit_drag.connect(_on_orbit_drag)
+	_cad_gizmo.zoom_step.connect(func(factor: float) -> void:
+		_orbit_r = clampf(_orbit_r * factor, _orbit_r_min, _orbit_r_max)
+		_update_cam_orbit()
+	)
+	_preview_window.add_child(_cad_gizmo)
 
 	get_tree().root.add_child(_preview_window)
 	_preview_window.popup_centered()

@@ -258,3 +258,23 @@ godot/
 - Testar sempre em modo desktop antes de testar com Quest
 - GDScript para UI e orquestração — lógica pesada fica no solver Julia
 - Manter cenas pequenas — composição de cenas em vez de cenas monolíticas
+
+### Tipagem explícita — nunca `:=` para Variant
+
+`:=` com expressões que retornam `Variant` (ex.: `Dictionary.get()`, `Array[i]`,
+`JSON.parse_string()`) infere o tipo como `Variant`, silenciando o verificador
+estático e escondendo erros de tipo em runtime.
+
+```gdscript
+# PROIBIDO — tipo inferido como Variant, sem checagem estática
+var rkt  := params.get("rocket", {})
+var fins := rkt.get("fins", {})
+
+# CORRETO — tipo declarado explicitamente
+var rkt:  Dictionary = params.get("rocket", {})
+var fins: Dictionary = rkt.get("fins", {})
+```
+
+Regra: **use `:=` apenas quando o lado direito já tem tipo concreto conhecido**
+(construtor `Node.new()`, literal `[]`/`{}`, ou retorno de função tipada).
+Para qualquer `.get()`, cast, ou retorno de `Variant`, declare o tipo explicitamente.
